@@ -1,10 +1,10 @@
 # Admin GUI
 
-The page under `matchora/gui/` is a verification console, not a product UI.
+The page under `matchmedia/gui/` is a verification console, not a product UI.
 
 ## Serving
 
-The files live in `matchora/gui/` and the dist builder copies them to `{exeDir}/public`. The app serves that directory at `/`.
+The files live in `matchmedia/gui/` and the dist builder copies them to `{exeDir}/public`. The app serves that directory at `/`.
 
 ## Folder picker
 

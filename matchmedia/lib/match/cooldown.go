@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alyshmahell/matchora/lib/config"
+	"github.com/alyshmahell/matchmedia/lib/config"
 )
 
 type Circuit struct {

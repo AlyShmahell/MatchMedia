@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/alyshmahell/matchora/lib/config"
-	"github.com/alyshmahell/matchora/lib/match"
+	"github.com/alyshmahell/matchmedia/lib/config"
+	"github.com/alyshmahell/matchmedia/lib/match"
 )
 
 func TestSameTitleUniqueID(t *testing.T) {

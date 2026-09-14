@@ -14,13 +14,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/alyshmahell/matchora/lib/config"
-	matchfs "github.com/alyshmahell/matchora/lib/fs"
-	"github.com/alyshmahell/matchora/lib/ingest"
-	"github.com/alyshmahell/matchora/lib/jobs"
-	"github.com/alyshmahell/matchora/lib/library"
-	"github.com/alyshmahell/matchora/lib/match"
-	"github.com/alyshmahell/matchora/lib/scan"
+	"github.com/alyshmahell/matchmedia/lib/config"
+	matchfs "github.com/alyshmahell/matchmedia/lib/fs"
+	"github.com/alyshmahell/matchmedia/lib/ingest"
+	"github.com/alyshmahell/matchmedia/lib/jobs"
+	"github.com/alyshmahell/matchmedia/lib/library"
+	"github.com/alyshmahell/matchmedia/lib/match"
+	"github.com/alyshmahell/matchmedia/lib/scan"
 )
 
 func main() {
@@ -457,7 +457,7 @@ func main() {
 	}
 	mux.Handle("GET /", http.FileServer(http.Dir(public)))
 
-	log.Printf("matchora %s listening on %s (data=%s)", cfg.Version, cfg.HTTP.Addr, cfg.DataDir)
+	log.Printf("matchmedia %s listening on %s (data=%s)", cfg.Version, cfg.HTTP.Addr, cfg.DataDir)
 	if err := http.ListenAndServe(cfg.HTTP.Addr, mux); err != nil {
 		log.Fatal(err)
 	}
@@ -522,7 +522,7 @@ func restartSoon() {
 		if resolved, err := filepath.EvalSymlinks(exe); err == nil {
 			exe = resolved
 		}
-		log.Printf("matchora restarting")
+		log.Printf("matchmedia restarting")
 		if err := syscall.Exec(exe, os.Args, os.Environ()); err != nil {
 			log.Fatalf("restart: %v", err)
 		}

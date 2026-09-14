@@ -3,7 +3,7 @@ package match
 import (
 	"strings"
 
-	"github.com/alyshmahell/matchora/lib/config"
+	"github.com/alyshmahell/matchmedia/lib/config"
 )
 
 func rank(cfg config.Config, job Job, cands []Candidate) []Candidate {

@@ -1,6 +1,6 @@
 # Match
 
-Providers are declared in [matchora/share/config/default.yaml](../../matchora/share/config/default.yaml). The engine is a generic GET + JSON-path walker. No provider names are hardcoded in Go.
+Providers are declared in [matchmedia/share/config/default.yaml](../../matchmedia/share/config/default.yaml). The engine is a generic GET + JSON-path walker. No provider names are hardcoded in Go.
 
 Shipped defaults:
 
@@ -30,7 +30,7 @@ Matched, selected, and cataloged titles are also written under `{data_dir}/catal
 
 Requests that persist that tree (`POST /v1/ingest`, `/v1/scan`, `/v1/match`, `/v1/retry`, `/v1/jobs/{id}/select`, `/v1/jobs/{id}/catalog`) accept `skip_episode_posters` (query `true`/`1`, JSON body, or ingest form field). When true, episode image GETs are skipped; title/movie and season posters still download. Episode `.nfo` files are still written.
 
-Stdlib HTTP. User-Agent `matchora/{version}`.
+Stdlib HTTP. User-Agent `matchmedia/{version}`.
 
 ## Ranking
 

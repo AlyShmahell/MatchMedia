@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/alyshmahell/matchora/lib/config"
+	"github.com/alyshmahell/matchmedia/lib/config"
 )
 
 var (

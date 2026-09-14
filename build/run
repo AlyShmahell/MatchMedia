@@ -26,26 +26,26 @@ rebuild() {
 
 stage_package() {
   local staging="$1"
-  mkdir -p "$staging/matchora"
-  cp -a "$DIR/dist"/. "$staging/matchora/"
-  rm -f "$staging/matchora/.gitkeep"
-  rm -rf "$staging/matchora/data"
+  mkdir -p "$staging/matchmedia"
+  cp -a "$DIR/dist"/. "$staging/matchmedia/"
+  rm -f "$staging/matchmedia/.gitkeep"
+  rm -rf "$staging/matchmedia/data"
   if [[ ! -f "$DIR/../LICENSE" ]]; then
     echo "error: $DIR/../LICENSE not found" >&2
     exit 1
   fi
-  cp "$DIR/../LICENSE" "$staging/matchora/LICENSE"
+  cp "$DIR/../LICENSE" "$staging/matchmedia/LICENSE"
 }
 
 write_tar() {
   local staging="$1" name="$2"
-  tar -C "$staging" -czf "$DIR/package/$name" matchora
+  tar -C "$staging" -czf "$DIR/package/$name" matchmedia
   echo "wrote $DIR/package/$name"
 }
 
 package() {
-  if [[ ! -x "$DIR/dist/matchora" ]]; then
-    echo "error: build/dist/matchora not found; rebuild first" >&2
+  if [[ ! -x "$DIR/dist/matchmedia" ]]; then
+    echo "error: build/dist/matchmedia not found; rebuild first" >&2
     exit 1
   fi
   mkdir -p "$DIR/package"
@@ -59,16 +59,16 @@ package() {
 
   staging="$(mktemp -d)"
   stage_package "$staging"
-  write_tar "$staging" "matchora-${version}-linux-amd64.tar.gz"
+  write_tar "$staging" "matchmedia-${version}-linux-amd64.tar.gz"
   rm -rf "$staging"
 }
 
 start() {
-  if [[ ! -x "$DIR/dist/matchora" ]]; then
-    echo "error: build/dist/matchora not found; pick a rebuild option" >&2
+  if [[ ! -x "$DIR/dist/matchmedia" ]]; then
+    echo "error: build/dist/matchmedia not found; pick a rebuild option" >&2
     exit 1
   fi
-  exec "$DIR/dist/matchora" "$@"
+  exec "$DIR/dist/matchmedia" "$@"
 }
 
 # Arrow/enter menu. Sets CHOICE to the 0-based index.

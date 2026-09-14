@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alyshmahell/matchora/lib/config"
-	"github.com/alyshmahell/matchora/lib/match"
+	"github.com/alyshmahell/matchmedia/lib/config"
+	"github.com/alyshmahell/matchmedia/lib/match"
 )
 
 func seed(t *testing.T, store *Store, list []match.Job) string {

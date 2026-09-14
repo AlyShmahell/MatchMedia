@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/alyshmahell/matchora/lib/config"
+	"github.com/alyshmahell/matchmedia/lib/config"
 )
 
 func writeTree(t *testing.T, root string, files []string) {

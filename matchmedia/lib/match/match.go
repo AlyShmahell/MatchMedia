@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/alyshmahell/matchora/lib/config"
+	"github.com/alyshmahell/matchmedia/lib/config"
 )
 
 var errCandidateNotFound = errors.New("candidate not found")

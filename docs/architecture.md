@@ -1,16 +1,16 @@
 # Architecture
 
-Matchora ingests title rows or scans a library path, searches metadata APIs defined in YAML, and ranks candidates with token-set Jaccard plus a residual plot score (SequenceMatcher is for disk grouping only). Matching behavior is in [design/match.md](design/match.md). The admin console is in [design/gui.md](design/gui.md).
+MatchMedia ingests title rows or scans a library path, searches metadata APIs defined in YAML, and ranks candidates with token-set Jaccard plus a residual plot score (SequenceMatcher is for disk grouping only). Matching behavior is in [design/match.md](design/match.md). The admin console is in [design/gui.md](design/gui.md).
 
 ## Layout
 
 | Path | Role |
 |------|------|
-| `matchora/app` | HTTP server (`-config`) |
-| `matchora/lib/config` | YAML loader (`-config` path, default `{exeDir}/config/default.yaml`) |
-| `matchora/share/config` | Seed `default.yaml` copied into `build/dist/config`. Grouping word lists and match/http numbers come only from YAML; a missing required key fails start. |
-| `matchora/lib` | fs, ingest, jobs, library (NFO catalog), match, scan |
-| `matchora/gui` | admin console source; copied to `build/dist/public` |
+| `matchmedia/app` | HTTP server (`-config`) |
+| `matchmedia/lib/config` | YAML loader (`-config` path, default `{exeDir}/config/default.yaml`) |
+| `matchmedia/share/config` | Seed `default.yaml` copied into `build/dist/config`. Grouping word lists and match/http numbers come only from YAML; a missing required key fails start. |
+| `matchmedia/lib` | fs, ingest, jobs, library (NFO catalog), match, scan |
+| `matchmedia/gui` | admin console source; copied to `build/dist/public` |
 | `build/` | Podman dist builder (Containerfile, compose, `run`) |
 | `{exeDir}/public` | served admin UI |
 | `{exeDir}/data` | `jobs-{session}.json`, optional `secrets` and `config.yaml` overlay; matched titles under `catalog/` as NFO trees |
@@ -49,6 +49,6 @@ Dist is binary + `config/` + `public/` only. The packager’s tarball is that tr
 
 `data_dir` defaults to `{exeDir}/data`. Empty `browse_root` follows `data_dir`. Provider keys live in `{data_dir}/secrets` (file name `secrets`, YAML map). Set them with `POST /v1/secrets` or by editing the file. A provider may set `secret:` to reuse another map key. Missing file or key leaves that provider off. `GET /v1/secrets` reports which slots are set, never the values.
 
-Other runtime YAML lives in `{data_dir}/config.yaml`, merged on `Load` the same way as `/run/matchora/config.yaml`. `GET`/`POST /v1/config` read and deep-merge that overlay (same shape as `default.yaml`). After a successful secrets or config POST the process writes the JSON body and `exec`s itself so the next `Load` applies the files.
+Other runtime YAML lives in `{data_dir}/config.yaml`, merged on `Load` the same way as `/run/matchmedia/config.yaml`. `GET`/`POST /v1/config` read and deep-merge that overlay (same shape as `default.yaml`). After a successful secrets or config POST the process writes the JSON body and `exec`s itself so the next `Load` applies the files.
 
 Each `POST /v1/scan` or `/v1/ingest` mints a session id (`<UTC datetime>-<16 hex chars>`, e.g. `20260829T122800Z-a1b2c3d4e5f6g7h8`) and writes `{data_dir}/jobs-{session}.json`. `session.ttl_ms` (clamped to `session.ttl_max_ms`, shipped 86400000) expires that file from the datetime in the id. Reads that need jobs or a filtered catalog take `?session=`. Matched titles are written under `{data_dir}/catalog` as `[uniqueid-id] Title (Year)/` with `.nfo` files and posters. `GET /v1/catalog?session=` returns only titles that session matched. Poster files are at `/v1/catalog/{provider}/{id}/poster.jpg?session=` (and season/episode variants). Deleting a session’s jobs file does not delete the catalog tree; `DELETE /v1/catalog` and `DELETE /v1/catalog/{provider}/{id}` do, and return `409` while any unexpired session still matches the target.

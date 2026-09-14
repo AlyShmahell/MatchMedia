@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/alyshmahell/matchora/lib/config"
-	"github.com/alyshmahell/matchora/lib/match"
+	"github.com/alyshmahell/matchmedia/lib/config"
+	"github.com/alyshmahell/matchmedia/lib/match"
 )
 
 func Save(ctx context.Context, cfg config.Config, job match.Job, cand match.Candidate, skipEpisodePosters bool) error {

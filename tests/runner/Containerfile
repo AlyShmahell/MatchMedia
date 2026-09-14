@@ -2,5 +2,5 @@ FROM docker.io/library/debian:trixie-slim
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates wget libgomp1 libcurl4 libvulkan1 mesa-vulkan-drivers \
   && rm -rf /var/lib/apt/lists/*
-WORKDIR /opt/matchora
-CMD ["/opt/matchora/matchora"]
+WORKDIR /opt/matchmedia
+CMD ["/opt/matchmedia/matchmedia"]

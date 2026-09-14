@@ -1,7 +1,7 @@
 const $ = (id) => document.getElementById(id);
 
-const skipEpisodePostersKey = "matchora.skip_episode_posters";
-const sessionKey = "matchora.session";
+const skipEpisodePostersKey = "matchmedia.skip_episode_posters";
+const sessionKey = "matchmedia.session";
 
 let pendingTimer = null;
 let waitTick = null;

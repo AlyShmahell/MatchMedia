@@ -1,19 +1,23 @@
-# Matchora
+<p align="center">
+  <img src="matchmedia/share/assets/matchmedia.svg" alt="MatchMedia" width="180">
+</p>
 
-Matchora scans a video library or ingests a list of titles, searches metadata APIs, and writes an NFO catalog. Candidates are ranked with token-set Jaccard plus a residual plot score. The browser UI is an admin console.
+<h1 align="center">MatchMedia</h1>
+
+MatchMedia scans a video library or ingests a list of titles, searches metadata APIs, and writes an NFO catalog. Candidates are ranked with token-set Jaccard plus a residual plot score. The browser UI is an admin console.
 
 Shipped providers: [TVMaze](https://www.tvmaze.com/api) and [Jikan](https://docs.api.jikan.moe/) (no key). [OMDb](https://www.omdbapi.com/) and [TMDB](https://developer.themoviedb.org/) are optional and need API keys.
 
 ## Install
 
-Download `matchora-<version>-linux-amd64.tar.gz` from [GitHub Releases](https://github.com/alyshmahell/matchora/releases). Unpack it. The archive root is `matchora/` (binary, `config/`, `public/`, `LICENSE`).
+Download `matchmedia-<version>-linux-amd64.tar.gz` from [GitHub Releases](https://github.com/alyshmahell/matchmedia/releases). Unpack it. The archive root is `matchmedia/` (binary, `config/`, `public/`, `LICENSE`).
 
 ## Run
 
 From that directory:
 
 ```bash
-./matchora
+./matchmedia
 ```
 
 The process listens on `http.addr` from `config/default.yaml` (shipped as port 7680). Open the admin console on that host and port.
@@ -28,7 +32,7 @@ TVMaze and Jikan need no key. Set OMDb and TMDB keys in the admin secrets panel,
 
 ## Use
 
-- **Scan** a path under the browse root. Matchora groups files into titles, then searches providers.
+- **Scan** a path under the browse root. MatchMedia groups files into titles, then searches providers.
 - **Ingest** a CSV or JSON list of titles (optional year, type, season, episode, IMDb id).
 - High-confidence hits auto-match. Close scores stay **manual** until you pick a candidate.
 - Matched titles are written under `data/catalog` as NFO trees with posters.

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alyshmahell/matchora/lib/config"
+	"github.com/alyshmahell/matchmedia/lib/config"
 )
 
 type httpClient struct {
@@ -42,7 +42,7 @@ func newHTTP(cfg config.Config) *httpClient {
 	br := cfg.HTTPBackoff()
 	return &httpClient{
 		hc:             &http.Client{Timeout: timeout},
-		userAgent:      "matchora/" + cfg.Version + " (+https://github.com/alyshmahell/matchora)",
+		userAgent:      "matchmedia/" + cfg.Version + " (+https://github.com/alyshmahell/matchmedia)",
 		retries:        retries,
 		backoffMin:     br.MinExp,
 		backoffMax:     br.MaxExp,

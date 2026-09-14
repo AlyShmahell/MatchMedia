@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alyshmahell/matchora/lib/config"
+	"github.com/alyshmahell/matchmedia/lib/config"
 )
 
 func always504Config(url string) config.Config {

@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
-test -x /opt/matchora/matchora
-test -f /opt/matchora/config/default.yaml
-test -f /opt/matchora/public/index.html
-test -f /opt/matchora/public/style.css
-test -f /opt/matchora/public/app.js
+test -x /opt/matchmedia/matchmedia
+test -f /opt/matchmedia/config/default.yaml
+test -f /opt/matchmedia/public/index.html
+test -f /opt/matchmedia/public/style.css
+test -f /opt/matchmedia/public/app.js
 echo "image ok"

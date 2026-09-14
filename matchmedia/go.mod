@@ -1,4 +1,4 @@
-module github.com/alyshmahell/matchora
+module github.com/alyshmahell/matchmedia
 
 go 1.26
 

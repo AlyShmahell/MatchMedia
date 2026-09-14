@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	matchfs "github.com/alyshmahell/matchora/lib/fs"
+	matchfs "github.com/alyshmahell/matchmedia/lib/fs"
 )
 
 type Item struct {

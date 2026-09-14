@@ -33,10 +33,10 @@ compose run --rm unit
 echo "==> smoke"
 compose run --rm tester
 echo "==> live"
-if [[ "${MATCHORA_LIVE:-}" == "1" ]]; then
+if [[ "${MATCHMEDIA_LIVE:-}" == "1" ]]; then
   compose --profile live run --rm live
 else
-  echo "live skipped (set MATCHORA_LIVE=1 to hit real TVMaze/Jikan)"
+  echo "live skipped (set MATCHMEDIA_LIVE=1 to hit real TVMaze/Jikan)"
 fi
 compose down --remove-orphans >/dev/null 2>&1 || true
 echo "==> tests passed"

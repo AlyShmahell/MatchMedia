@@ -11,8 +11,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/alyshmahell/matchora/lib/config"
-	"github.com/alyshmahell/matchora/lib/match"
+	"github.com/alyshmahell/matchmedia/lib/config"
+	"github.com/alyshmahell/matchmedia/lib/match"
 )
 
 var fields = []string{"title", "year", "type", "season", "episode", "imdb"}

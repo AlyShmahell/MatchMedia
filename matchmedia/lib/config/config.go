@@ -12,7 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const runOverlay = "/run/matchora/config.yaml"
+const runOverlay = "/run/matchmedia/config.yaml"
 
 type Config struct {
 	HTTP       HTTP                `yaml:"http"`

@@ -9,16 +9,16 @@ services:
       timeout: 2s
       retries: 10
 
-  matchora:
+  matchmedia:
     build:
       context: ./runner
       dockerfile: Containerfile
     volumes:
-      - ../build/dist:/opt/matchora:z
-      - ./fixtures/library:/opt/matchora/data/library:z
-      - ./config.yaml:/run/matchora/config.yaml:z
+      - ../build/dist:/opt/matchmedia:z
+      - ./fixtures/library:/opt/matchmedia/data/library:z
+      - ./config.yaml:/run/matchmedia/config.yaml:z
     tmpfs:
-      - /opt/matchora/data
+      - /opt/matchmedia/data
     depends_on:
       stub:
         condition: service_healthy
@@ -34,14 +34,14 @@ services:
       context: ./runner
       dockerfile: Containerfile
     volumes:
-      - ../build/dist:/opt/matchora:z
+      - ../build/dist:/opt/matchmedia:z
       - ./image/run:/check:z
     entrypoint: ["/bin/sh", "/check"]
 
   unit:
     image: docker.io/library/golang:1.26-bookworm
     volumes:
-      - ../matchora:/src:z
+      - ../matchmedia:/src:z
     working_dir: /src
     command: ["go", "test", "-buildvcs=false", "./lib/match", "./lib/scan", "./lib/config", "./lib/jobs", "./lib/ingest", "./lib/library"]
 
@@ -50,19 +50,19 @@ services:
       context: .
       dockerfile: Containerfile
     depends_on:
-      matchora:
+      matchmedia:
         condition: service_healthy
     command: ["/smoke/run"]
 
-  matchora-live:
+  matchmedia-live:
     profiles: ["live"]
     build:
       context: ./runner
       dockerfile: Containerfile
     volumes:
-      - ../build/dist:/opt/matchora:z
+      - ../build/dist:/opt/matchmedia:z
     tmpfs:
-      - /opt/matchora/data
+      - /opt/matchmedia/data
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7680/health"]
       interval: 5s
@@ -76,6 +76,6 @@ services:
       context: .
       dockerfile: Containerfile
     depends_on:
-      matchora-live:
+      matchmedia-live:
         condition: service_healthy
     command: ["/live/run"]

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/alyshmahell/matchora/lib/config"
+	"github.com/alyshmahell/matchmedia/lib/config"
 )
 
 func TestParseExactHeaders(t *testing.T) {

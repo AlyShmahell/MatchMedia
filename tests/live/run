@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
-URL="http://matchora-live:7680"
+URL="http://matchmedia-live:7680"
 
 i=0
 while [ "$i" -lt 40 ]; do

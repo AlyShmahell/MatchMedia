@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/alyshmahell/matchora/lib/config"
+	"github.com/alyshmahell/matchmedia/lib/config"
 )
 
 type Title struct {

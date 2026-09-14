@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alyshmahell/matchora/lib/config"
-	"github.com/alyshmahell/matchora/lib/ingest"
-	"github.com/alyshmahell/matchora/lib/match"
+	"github.com/alyshmahell/matchmedia/lib/config"
+	"github.com/alyshmahell/matchmedia/lib/ingest"
+	"github.com/alyshmahell/matchmedia/lib/match"
 )
 
 var ErrInvalidSession = errors.New("invalid session")
