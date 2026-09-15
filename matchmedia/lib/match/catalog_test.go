@@ -301,3 +301,26 @@ func TestMapFilesOntoCatalog(t *testing.T) {
 		t.Fatal("unmapped episode got a path")
 	}
 }
+
+func TestMapFilesOntoCatalogPaths(t *testing.T) {
+	job := Job{
+		Files: []JobFile{
+			{Path: "/a.mkv", Season: "1", Episode: "1"},
+			{Path: "/b.mkv", Season: "1", Episode: "1"},
+		},
+		Catalog: []CatalogSeason{{
+			Number: "1",
+			Title:  "Season 1",
+			Episodes: []CatalogEpisode{
+				{Number: "1", Title: "One"},
+			},
+		}},
+	}
+	got := MapFilesOntoCatalog(job)
+	if got.Catalog[0].Episodes[0].Path != "/a.mkv" {
+		t.Fatalf("path=%q", got.Catalog[0].Episodes[0].Path)
+	}
+	if len(got.Catalog[0].Episodes[0].Paths) != 2 {
+		t.Fatalf("paths=%v", got.Catalog[0].Episodes[0].Paths)
+	}
+}

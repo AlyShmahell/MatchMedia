@@ -670,6 +670,18 @@ func jobsFromShows(shows []match.Grouped, root string, child scan.Child) []match
 	for i := range created {
 		created[i].Path = resolveShowPath(root, child.Path, shows[i].Path)
 		created[i].Parent = shows[i].Parent
+		if len(shows[i].Files) == 0 {
+			continue
+		}
+		files := make([]match.JobFile, len(shows[i].Files))
+		for j, f := range shows[i].Files {
+			files[j] = match.JobFile{
+				Path:    resolveShowPath(root, child.Path, f.Path),
+				Season:  f.Season,
+				Episode: f.Episode,
+			}
+		}
+		created[i].Files = files
 	}
 	return created
 }

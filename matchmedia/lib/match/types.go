@@ -12,6 +12,7 @@ type Grouped struct {
 	Cleaned
 	Path   string
 	Parent string
+	Files  []JobFile
 }
 
 type Candidate struct {

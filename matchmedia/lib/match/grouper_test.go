@@ -3,6 +3,8 @@ package match
 import (
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/alyshmahell/matchmedia/lib/config"
@@ -154,5 +156,202 @@ func TestSeqRatioMatchesPython(t *testing.T) {
 	}
 	if got := SeqRatio("", ""); got != 1 {
 		t.Fatalf("empty=%v", got)
+	}
+}
+
+func firstWord(t *testing.T, set map[string]struct{}) string {
+	t.Helper()
+	var words []string
+	for w := range set {
+		if w != "" {
+			words = append(words, w)
+		}
+	}
+	sort.Strings(words)
+	if len(words) == 0 {
+		t.Fatal("empty word list")
+	}
+	return words[0]
+}
+
+func fileBySuffix(t *testing.T, files []JobFile, suffix string) JobFile {
+	t.Helper()
+	for _, f := range files {
+		if strings.HasSuffix(f.Path, suffix) {
+			return f
+		}
+	}
+	t.Fatalf("missing file %s in %+v", suffix, files)
+	return JobFile{}
+}
+
+func TestGroupFilesSeasonNumbers(t *testing.T) {
+	lib := t.TempDir()
+	child := filepath.Join(lib, "Show")
+	writeTree(t, lib, []string{
+		"Show/Season 01/Show S01E01.mkv",
+		"Show/Season 02/Show S02E01.mkv",
+		"Show/Season 01/note.nfo",
+		"Show/Season 01/poster.jpg",
+	})
+	got := Group(testCfg(t), lib, child)
+	if len(got) != 1 || got[0].Title != "Show" {
+		t.Fatalf("got=%v", titlesOf(got))
+	}
+	if len(got[0].Files) != 2 {
+		t.Fatalf("files=%+v", got[0].Files)
+	}
+	for _, f := range got[0].Files {
+		if strings.HasSuffix(f.Path, ".nfo") || strings.HasSuffix(f.Path, ".jpg") {
+			t.Fatalf("non-video in files: %+v", f)
+		}
+		if f.Path == "Show" || strings.HasSuffix(f.Path, "/") {
+			t.Fatalf("directory in files: %+v", f)
+		}
+	}
+	e1 := fileBySuffix(t, got[0].Files, "Show S01E01.mkv")
+	if e1.Season != "1" || e1.Episode != "1" {
+		t.Fatalf("s01e01=%+v", e1)
+	}
+	e2 := fileBySuffix(t, got[0].Files, "Show S02E01.mkv")
+	if e2.Season != "2" || e2.Episode != "1" {
+		t.Fatalf("s02e01=%+v", e2)
+	}
+}
+
+func TestGroupFilesSequentialEpisodes(t *testing.T) {
+	lib := t.TempDir()
+	child := filepath.Join(lib, "Show")
+	writeTree(t, lib, []string{
+		"Show/Season 01/a.mkv",
+		"Show/Season 01/b.mkv",
+	})
+	got := Group(testCfg(t), lib, child)
+	if len(got) != 1 {
+		t.Fatalf("got=%v", titlesOf(got))
+	}
+	a := fileBySuffix(t, got[0].Files, "/a.mkv")
+	b := fileBySuffix(t, got[0].Files, "/b.mkv")
+	if a.Season != "1" || a.Episode != "1" {
+		t.Fatalf("a=%+v", a)
+	}
+	if b.Season != "1" || b.Episode != "2" {
+		t.Fatalf("b=%+v", b)
+	}
+}
+
+func TestGroupFilesFilenameWinsSeason(t *testing.T) {
+	lib := t.TempDir()
+	child := filepath.Join(lib, "Show")
+	writeTree(t, lib, []string{
+		"Show/Season 02/Show S01E05.mkv",
+	})
+	got := Group(testCfg(t), lib, child)
+	if len(got) != 1 || len(got[0].Files) != 1 {
+		t.Fatalf("got=%+v", got)
+	}
+	f := got[0].Files[0]
+	if f.Season != "1" || f.Episode != "5" {
+		t.Fatalf("file=%+v", f)
+	}
+}
+
+func TestGroupFilesMovieOmitsNumbers(t *testing.T) {
+	lib := t.TempDir()
+	child := filepath.Join(lib, "Show")
+	writeTree(t, lib, []string{
+		"Show/Title.mkv",
+	})
+	got := Group(testCfg(t), lib, child)
+	if len(got) != 1 {
+		t.Fatalf("got=%v", titlesOf(got))
+	}
+	if len(got[0].Files) != 1 {
+		t.Fatalf("files=%+v", got[0].Files)
+	}
+	f := got[0].Files[0]
+	if f.Season != "" || f.Episode != "" {
+		t.Fatalf("expected no numbers: %+v", f)
+	}
+	if !strings.HasSuffix(f.Path, "Title.mkv") {
+		t.Fatalf("path=%q", f.Path)
+	}
+}
+
+func TestGroupFilesNamedSiblingOwnership(t *testing.T) {
+	lib := t.TempDir()
+	child := filepath.Join(lib, "Show")
+	writeTree(t, lib, []string{
+		"Show/Season 01/e.mkv",
+		"Show/Spin Off/Season 01/e.mkv",
+	})
+	got := Group(testCfg(t), lib, child)
+	if len(got) != 2 {
+		t.Fatalf("got=%v", titlesOf(got))
+	}
+	var parent, spin *Grouped
+	for i := range got {
+		if got[i].Title == "Show" {
+			parent = &got[i]
+		}
+		if got[i].Title == "Spin Off" {
+			spin = &got[i]
+		}
+	}
+	if parent == nil || spin == nil {
+		t.Fatalf("got=%v", titlesOf(got))
+	}
+	if len(parent.Files) != 1 || strings.Contains(parent.Files[0].Path, "Spin Off") {
+		t.Fatalf("parent files=%+v", parent.Files)
+	}
+	if len(spin.Files) != 1 || !strings.Contains(spin.Files[0].Path, "Spin Off") {
+		t.Fatalf("spin files=%+v", spin.Files)
+	}
+}
+
+func TestGroupKindsExtrasStayOnParent(t *testing.T) {
+	cfg := testCfg(t)
+	kind := firstWord(t, cfg.GroupKinds())
+	extra := firstWord(t, cfg.GroupExtras())
+	lib := t.TempDir()
+	child := filepath.Join(lib, "Show")
+	writeTree(t, lib, []string{
+		"Show/Season 01/e.mkv",
+		"Show/" + kind + "/k.mkv",
+		"Show/" + extra + "/x.mkv",
+		"Show/Spin Off/Season 01/e.mkv",
+	})
+	got := Group(cfg, lib, child)
+	var parent, spin *Grouped
+	for i := range got {
+		switch got[i].Title {
+		case "Show":
+			parent = &got[i]
+		case "Spin Off":
+			spin = &got[i]
+		default:
+			if got[i].Title == kind || got[i].Title == extra {
+				t.Fatalf("kinds/extras minted a title: %v", titlesOf(got))
+			}
+		}
+	}
+	if parent == nil {
+		t.Fatalf("missing parent: %v", titlesOf(got))
+	}
+	if spin == nil {
+		t.Fatalf("missing spin-off: %v", titlesOf(got))
+	}
+	k := fileBySuffix(t, parent.Files, "/k.mkv")
+	if k.Season != "0" {
+		t.Fatalf("kind file=%+v", k)
+	}
+	x := fileBySuffix(t, parent.Files, "/x.mkv")
+	if x.Season != "0" {
+		t.Fatalf("extras file=%+v", x)
+	}
+	for _, f := range parent.Files {
+		if strings.Contains(f.Path, "Spin Off") {
+			t.Fatalf("parent leaked spin-off: %+v", parent.Files)
+		}
 	}
 }

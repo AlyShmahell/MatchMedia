@@ -61,6 +61,7 @@ var qualityExtra = map[string]struct{}{
 
 type groupedRow struct {
 	title, year, path, parent string
+	files                     []JobFile
 }
 
 type preprocessor struct {
@@ -93,10 +94,10 @@ func Group(cfg config.Config, root, child string) []Grouped {
 		return nil
 	}
 	g := newGrouper(cfg, root)
-	rows := g.group(child)
+	rows := g.attachFiles(g.group(child))
 	out := make([]Grouped, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, Grouped{Cleaned: Cleaned{Title: r.title, Year: r.year}, Path: r.path, Parent: r.parent})
+		out = append(out, Grouped{Cleaned: Cleaned{Title: r.title, Year: r.year}, Path: r.path, Parent: r.parent, Files: r.files})
 	}
 	return out
 }
@@ -1017,7 +1018,8 @@ func (g *grouper) node(path, root string, years map[string]bool, pathRel string)
 	for _, e := range entries {
 		kind := g.cls.classify(e.name, e.dir, root)
 		switch kind {
-		case "extras":
+		case "extras", "kind":
+			series = true
 			continue
 		case "season":
 			series = true
@@ -1027,22 +1029,9 @@ func (g *grouper) node(path, root string, years map[string]bool, pathRel string)
 			if g.cls.isAlias(cleaned, root) || g.cls.isSeasonName(e.name, cleaned, root) || g.cls.isRootPlusYear(cleaned, root) {
 				series = true
 			} else if g.cls.isKindName(e.name, cleaned, root) {
-				inner := g.peek(e.abs, root, years, pathRel+"/"+e.name)
-				if len(inner) > 0 {
-					out = append(out, inner...)
-				} else {
-					series = true
-				}
+				series = true
 			} else {
 				out = append(out, g.namedDir(e.abs, e.name, root, years, pathRel+"/"+e.name)...)
-			}
-			continue
-		case "kind":
-			inner := g.peek(e.abs, root, years, pathRel+"/"+e.name)
-			if len(inner) > 0 {
-				out = append(out, inner...)
-			} else {
-				series = true
 			}
 			continue
 		case "named":

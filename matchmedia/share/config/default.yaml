@@ -6,7 +6,7 @@ http:
     min_exp: 10
     max_exp: 13
   provider_timeout_ms: 10000
-version: "0.0.5"
+version: "0.0.6"
 session:
   ttl_ms: 86400000
   ttl_max_ms: 86400000

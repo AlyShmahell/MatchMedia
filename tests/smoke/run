@@ -96,7 +96,7 @@ i=0
 while [ "$i" -lt 40 ]; do
   jobs="$(curl -sf "$URL/v1/jobs?session=$ingsess")"
   if echo "$jobs" | grep -q '"status":"matched"' \
-    && echo "$jobs" | grep -q '"ranker":"seq"' \
+    && echo "$jobs" | grep -q '"ranker":"set"' \
     && echo "$jobs" | grep -q '"provider":"tvmaze"' \
     && echo "$jobs" | grep -q '"provider":"jikan"' \
     && echo "$jobs" | grep -q '"catalog_for"' \
@@ -107,7 +107,7 @@ while [ "$i" -lt 40 ]; do
   sleep 1
 done
 echo "$jobs" | grep -q '"status":"matched"'
-echo "$jobs" | grep -q '"ranker":"seq"'
+echo "$jobs" | grep -q '"ranker":"set"'
 echo "$jobs" | grep -q '"provider":"tvmaze"'
 echo "$jobs" | grep -q '"provider":"jikan"'
 echo "$jobs" | grep -q '"catalog_for"'
@@ -150,7 +150,7 @@ while [ "$i" -lt 40 ]; do
     && echo "$jobs" | grep -q '"title":"Girls"' \
     && echo "$jobs" | grep -q '"title":"Cowboy Bebop"' \
     && echo "$jobs" | grep -q '"status":"matched"' \
-    && echo "$jobs" | grep -q '"ranker":"seq"' \
+    && echo "$jobs" | grep -q '"ranker":"set"' \
     && ! echo "$jobs" | grep -q '"status":"pending"'; then
     break
   fi
@@ -160,7 +160,9 @@ done
 echo "$jobs" | grep -q '"source":"scan"'
 echo "$jobs" | grep -q '"title":"Girls"'
 echo "$jobs" | grep -q '"title":"Cowboy Bebop"'
-echo "$jobs" | grep -q '"ranker":"seq"'
+echo "$jobs" | grep -qF '"files":['
+echo "$jobs" | grep -qF '.mkv'
+echo "$jobs" | grep -q '"ranker":"set"'
 echo "$jobs" | grep -q '"status":"matched"'
 ! echo "$jobs" | grep -q '"status":"pending"'
 

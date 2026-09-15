@@ -55,6 +55,7 @@ func runOne(ctx context.Context, cfg config.Config, httpc *httpClient, job Job) 
 		job.Match = nil
 		return job
 	}
+	job.Error = ""
 	return finishRank(ctx, cfg, httpc, job, cands)
 }
 

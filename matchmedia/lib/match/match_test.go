@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -432,5 +433,117 @@ func TestRunOneSinbadPrefersMagi(t *testing.T) {
 	}
 	if jk.Load() != 0 {
 		t.Fatalf("jikan hits=%d", jk.Load())
+	}
+}
+
+func fastSlowSearch(base string) config.Provider {
+	return config.Provider{
+		Types:  []string{"tv", ""},
+		Base:   base,
+		URL:    "{base}/search/shows",
+		Query:  map[string]string{"q": "{title}"},
+		Items:  "$",
+		Fields: map[string]string{"id": "show.id", "title": "show.name", "year": "show.premiered", "url": "show.url"},
+	}
+}
+
+func fastSlowCfg(fastURL, slowURL string, deferSlow bool) config.Config {
+	slow := fastSlowSearch(slowURL)
+	slow.Defer = deferSlow
+	return config.Config{
+		HTTP: config.HTTP{TimeoutMS: 5000, Retries: 1, ProviderTimeoutMS: 200, Backoff: config.ExpRange{MinExp: 0, MaxExp: 2}},
+		Match: config.Match{
+			MinScore: 0.72, MinMargin: 0.04,
+			CooldownFails: 1,
+			Cooldown:      config.ExpRange{MinExp: 10, MaxExp: 12},
+			PlotStop:      testPlotStop,
+		},
+		Providers: map[string]config.Provider{
+			"fast": fastSlowSearch(fastURL),
+			"slow": slow,
+		},
+	}
+}
+
+func TestRunOneRanksWhenDeferredCooling(t *testing.T) {
+	var slowN atomic.Int32
+	fast := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]any{
+			map[string]any{"score": 1, "show": map[string]any{"id": 1, "name": "Other Name", "premiered": "1999", "url": "http://t"}},
+		})
+	}))
+	t.Cleanup(fast.Close)
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		slowN.Add(1)
+		w.WriteHeader(http.StatusGatewayTimeout)
+	}))
+	t.Cleanup(slow.Close)
+	cfg := fastSlowCfg(fast.URL, slow.URL, true)
+	cool := NewCircuit()
+	ctx := WithCircuit(context.Background(), cool)
+	httpc := newHTTP(cfg)
+	job := Job{Title: "Title"}
+	first := runOne(ctx, cfg, httpc, job)
+	if first.Status == "error" {
+		t.Fatalf("first status=%s err=%s", first.Status, first.Error)
+	}
+	if first.Error != "" {
+		t.Fatalf("first error=%q", first.Error)
+	}
+	hits := slowN.Load()
+	if hits < 1 {
+		t.Fatalf("slow hits=%d", hits)
+	}
+	second := runOne(ctx, cfg, httpc, job)
+	if second.Status == "error" {
+		t.Fatalf("second status=%s err=%s", second.Status, second.Error)
+	}
+	if second.Error != "" {
+		t.Fatalf("second error=%q", second.Error)
+	}
+	if slowN.Load() != hits {
+		t.Fatalf("slow called during cooldown: before=%d after=%d", hits, slowN.Load())
+	}
+}
+
+func TestRunOneAllCooldownIsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusGatewayTimeout)
+	}))
+	t.Cleanup(srv.Close)
+	cfg := fastSlowCfg(srv.URL, srv.URL, false)
+	cool := NewCircuit()
+	ctx := WithCircuit(context.Background(), cool)
+	httpc := newHTTP(cfg)
+	job := Job{Title: "Title"}
+	first := runOne(ctx, cfg, httpc, job)
+	if first.Status != "error" {
+		t.Fatalf("first status=%s err=%s", first.Status, first.Error)
+	}
+	second := runOne(ctx, cfg, httpc, job)
+	if second.Status != "error" {
+		t.Fatalf("second status=%s err=%s", second.Status, second.Error)
+	}
+	if !strings.Contains(second.Error, "fast: cooldown") || !strings.Contains(second.Error, "slow: cooldown") {
+		t.Fatalf("error=%q", second.Error)
+	}
+}
+
+func TestRunOneAllHardFailIsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusGatewayTimeout)
+	}))
+	t.Cleanup(srv.Close)
+	cfg := fastSlowCfg(srv.URL, srv.URL, false)
+	cfg.Match.CooldownFails = 99
+	job := runOne(context.Background(), cfg, newHTTP(cfg), Job{Title: "Title"})
+	if job.Status != "error" {
+		t.Fatalf("status=%s err=%s", job.Status, job.Error)
+	}
+	if !strings.Contains(job.Error, "fast:") || !strings.Contains(job.Error, "slow:") {
+		t.Fatalf("error=%q", job.Error)
+	}
+	if strings.Contains(job.Error, "cooldown") {
+		t.Fatalf("unexpected cooldown: %q", job.Error)
 	}
 }
