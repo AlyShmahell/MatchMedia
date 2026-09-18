@@ -63,14 +63,17 @@ func rankPass(ctx context.Context, cfg config.Config, httpc *httpClient, job Job
 	if len(cands) == 0 {
 		return job, false
 	}
-	job = finishRank(ctx, cfg, httpc, job, cands)
-	if job.Status == "error" || job.Status == "matched" {
-		return job, true
+	done := waitStart(ctx, job, "set")
+	ranked := rank(cfg, job, cands)
+	done(nil)
+	job.Ranker = "set"
+	job.Candidates = ranked
+	if !skipDefer(cfg, ranked) {
+		job.Status = "manual"
+		job.Match = nil
+		return job, false
 	}
-	if skipDefer(cfg, job.Candidates) {
-		return job, true
-	}
-	return job, false
+	return applyMatch(ctx, cfg, httpc, job, ranked), true
 }
 
 func skipDefer(cfg config.Config, ranked []Candidate) bool {
@@ -82,13 +85,16 @@ func skipDefer(cfg config.Config, ranked []Candidate) bool {
 
 func finishRank(ctx context.Context, cfg config.Config, httpc *httpClient, job Job, cands []Candidate) Job {
 	done := waitStart(ctx, job, "set")
-	cands, preferApplied := preferJob(cfg, job, cands)
 	ranked := rank(cfg, job, cands)
 	done(nil)
 	job.Ranker = "set"
 	job.Candidates = ranked
-	best := ranked[0]
-	if !autoMatch(cfg, ranked, preferApplied) {
+	return applyMatch(ctx, cfg, httpc, job, ranked)
+}
+
+func applyMatch(ctx context.Context, cfg config.Config, httpc *httpClient, job Job, ranked []Candidate) Job {
+	best, ok := autoMatch(cfg, job, ranked, preferWant(cfg, job.Type))
+	if !ok {
 		job.Status = "manual"
 		job.Match = nil
 		return job
@@ -102,48 +108,71 @@ func finishRank(ctx context.Context, cfg config.Config, httpc *httpClient, job J
 	return attachCatalog(ctx, cfg, httpc, job, *job.Match)
 }
 
-func autoMatch(cfg config.Config, ranked []Candidate, preferApplied bool) bool {
+func matchStrength(c Candidate) float64 {
+	if c.Score > c.Jaccard {
+		return c.Score
+	}
+	return c.Jaccard
+}
+
+func autoMatch(cfg config.Config, job Job, ranked []Candidate, want map[string]string) (Candidate, bool) {
 	if len(ranked) == 0 {
-		return false
+		return Candidate{}, false
 	}
 	best := ranked[0]
-	if best.Jaccard >= cfg.Match.MinScore {
-		if len(ranked) > 1 && best.Jaccard-ranked[1].Jaccard < cfg.Match.MinMargin {
-			return false
+	if matchStrength(best) >= cfg.Match.MinScore {
+		if len(ranked) < 2 || matchStrength(best)-matchStrength(ranked[1]) >= cfg.Match.MinMargin {
+			return best, true
 		}
-		return true
 	}
-	if !preferApplied {
+	if len(ranked) > 1 && best.Score >= cfg.Match.MinScore && best.Score-ranked[1].Score >= cfg.Match.MinMargin {
+		return best, true
+	}
+	if uniqueQueryCov(cfg, job, ranked) {
+		return best, true
+	}
+	pref := preferSubset(want, ranked)
+	if len(pref) < 2 || pref[0].QueryCov < 1 {
+		return Candidate{}, false
+	}
+	if pref[0].Score-pref[1].Score < cfg.Match.MinMargin {
+		return Candidate{}, false
+	}
+	return pref[0], true
+}
+
+func uniqueQueryCov(cfg config.Config, job Job, ranked []Candidate) bool {
+	if len(ranked) == 0 || ranked[0].QueryCov < 1 {
 		return false
 	}
-	if len(ranked) == 1 {
-		return best.Score >= cfg.MatchSoloScore()
-	}
-	if best.QueryCov < 1 {
+	if len(plotQuery(job.Title, cfg.PlotStop())) == 0 {
 		return false
 	}
-	return best.Score-ranked[1].Score >= cfg.Match.MinMargin
+	seen := map[string]struct{}{}
+	for _, c := range ranked {
+		if c.QueryCov != 1 {
+			continue
+		}
+		seen[coveringWorkKey(job.Title, c)] = struct{}{}
+	}
+	return len(seen) == 1
 }
 
 func preferWant(cfg config.Config, jobType string) map[string]string {
-	if jobType != "" {
-		return cfg.Match.Prefer[jobType]
-	}
-	return cfg.Match.Prefer["anime"]
+	return cfg.Match.Prefer[jobType]
 }
 
 func preferCandidates(cfg config.Config, jobType string, cands []Candidate) []Candidate {
-	kept, _ := preferFilter(preferWant(cfg, jobType), cands)
+	kept := preferSubset(preferWant(cfg, jobType), cands)
+	if len(kept) == 0 {
+		return cands
+	}
 	return kept
 }
 
-func preferJob(cfg config.Config, job Job, cands []Candidate) ([]Candidate, bool) {
-	return preferFilter(preferWant(cfg, job.Type), cands)
-}
-
-func preferFilter(want map[string]string, cands []Candidate) ([]Candidate, bool) {
-	if len(want) == 0 || len(cands) == 0 {
-		return cands, false
+func preferSubset(want map[string]string, cands []Candidate) []Candidate {
+	if len(want) == 0 {
+		return nil
 	}
 	var keep []Candidate
 	for _, c := range cands {
@@ -151,10 +180,7 @@ func preferFilter(want map[string]string, cands []Candidate) ([]Candidate, bool)
 			keep = append(keep, c)
 		}
 	}
-	if len(keep) == 0 {
-		return cands, false
-	}
-	return keep, true
+	return keep
 }
 
 func preferMatch(c Candidate, want map[string]string) bool {

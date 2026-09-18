@@ -19,6 +19,15 @@ func rankTitle(title string, cands []Candidate) []Candidate {
 	return rank(testRankCfg(), Job{Title: title}, cands)
 }
 
+func scoreDen() float64 {
+	cfg := testRankCfg()
+	return 1 + cfg.TitleLift() + cfg.ExactLift()
+}
+
+func exactScore() float64 {
+	return (1 + testRankCfg().ExactLift()) / scoreDen()
+}
+
 func TestRankSeqPrefersTitleMatch(t *testing.T) {
 	got := rank(testRankCfg(), Job{Title: "Girls", Year: "2012"}, []Candidate{
 		{Title: "Other", Year: "2012"},
@@ -27,7 +36,7 @@ func TestRankSeqPrefersTitleMatch(t *testing.T) {
 	if len(got) != 2 || got[0].Title != "Girls" {
 		t.Fatalf("got=%v", got)
 	}
-	if got[0].Jaccard != 1 || got[0].Score != 1 {
+	if got[0].Jaccard != 1 || got[0].Score != exactScore() {
 		t.Fatalf("jaccard=%v score=%v", got[0].Jaccard, got[0].Score)
 	}
 }
@@ -40,7 +49,7 @@ func TestRankSeqIgnoresSynopsis(t *testing.T) {
 	if got[0].Title != "Wednesday" {
 		t.Fatalf("got=%v", got)
 	}
-	if got[0].Jaccard != 1 || got[0].Score != 1 {
+	if got[0].Jaccard != 1 || got[0].Score != exactScore() {
 		t.Fatalf("jaccard=%v score=%v", got[0].Jaccard, got[0].Score)
 	}
 }
@@ -53,7 +62,7 @@ func TestRankSeqLimitlessBeatsWithSuffix(t *testing.T) {
 	if got[0].Title != "Limitless" || got[0].Year != "2015" {
 		t.Fatalf("got=%v", got)
 	}
-	if got[0].Jaccard != 1 || got[0].Score != 1 {
+	if got[0].Jaccard != 1 || got[0].Score != exactScore() {
 		t.Fatalf("jaccard=%v score=%v", got[0].Jaccard, got[0].Score)
 	}
 }
@@ -66,7 +75,7 @@ func TestRankSeqDarkMatterYearsStayTied(t *testing.T) {
 	if got[0].Score != got[1].Score {
 		t.Fatalf("tied years should match: %v %v", got[0].Score, got[1].Score)
 	}
-	if got[0].Jaccard != 1 || got[0].Score != 1 {
+	if got[0].Jaccard != 1 || got[0].Score != exactScore() {
 		t.Fatalf("jaccard=%v score=%v", got[0].Jaccard, got[0].Score)
 	}
 }
@@ -79,8 +88,8 @@ func TestRankSeqYearBonus(t *testing.T) {
 	if got[0].Year != "1998" {
 		t.Fatalf("got=%v", got)
 	}
-	if got[0].Score != 1 || got[1].Score != 1 {
-		t.Fatalf("exact titles should both score 1: %v %v", got[0].Score, got[1].Score)
+	if got[0].Score != exactScore() || got[1].Score != exactScore() {
+		t.Fatalf("exact titles should both get exact lift: %v %v", got[0].Score, got[1].Score)
 	}
 	if got[0].Jaccard != got[1].Jaccard {
 		t.Fatalf("jaccard should match: %v %v", got[0].Jaccard, got[1].Jaccard)
@@ -91,7 +100,7 @@ func TestRankSidoniaExactWithParent(t *testing.T) {
 	got := rank(testRankCfg(), Job{Title: "Sidonia no Kishi", Parent: "Knights of Sidonia"}, []Candidate{
 		{Title: "Sidonia no Kishi", Year: "2014"},
 	})
-	if got[0].Jaccard != 1 || got[0].Score != 1 {
+	if got[0].Jaccard != 1 || got[0].Score < exactScore() {
 		t.Fatalf("jaccard=%v score=%v", got[0].Jaccard, got[0].Score)
 	}
 }
@@ -230,8 +239,8 @@ func TestRankExplosionPlotPrefersBakuen(t *testing.T) {
 	if got[0].Jaccard != 0 || got[1].Jaccard != 0 {
 		t.Fatalf("jaccard should be 0: %+v", got)
 	}
-	if got[0].Score <= got[1].Score || got[0].Score > 1 {
-		t.Fatalf("plot residual missing: %v %v", got[0].Score, got[1].Score)
+	if got[0].Score <= got[1].Score || got[0].Score > testRankCfg().TitleLift() {
+		t.Fatalf("plot residual missing or uncapped: %v %v", got[0].Score, got[1].Score)
 	}
 }
 
@@ -246,8 +255,48 @@ func TestRankAverageAbilitiesPlotLifts(t *testing.T) {
 	if got[0].Jaccard != 0 {
 		t.Fatalf("jaccard=%v", got[0].Jaccard)
 	}
-	if got[0].Score <= 0 || got[0].Score > 1 {
-		t.Fatalf("plot should lift score: %v", got[0].Score)
+	if got[0].Score <= 0 || got[0].Score > testRankCfg().TitleLift() {
+		t.Fatalf("plot should be a small lift: %v", got[0].Score)
+	}
+}
+
+func TestRankThe100SynopsisDoesNotFill(t *testing.T) {
+	const girlfriends = "The 100 Girlfriends Who Really, Really, Really, Really, Really Love You"
+	got := rankTitle("The 100", []Candidate{
+		{Title: "The 100", Year: "2014", Synopsis: "The 100 survivors land on Earth."},
+		{Title: girlfriends, Year: "2023", Synopsis: "A boy is confessed to by 100 girlfriends."},
+	})
+	if got[0].Title != "The 100" || got[0].Score != exactScore() {
+		t.Fatalf("exact first: %+v", got)
+	}
+	if got[1].Title != girlfriends || got[1].Score >= 1 {
+		t.Fatalf("girlfriends should stay below 1: %+v", got[1])
+	}
+}
+
+func TestRankOshiNoKoSynopsisDoesNotBeatAnime(t *testing.T) {
+	got := rankTitle("Oshi no Ko", []Candidate{
+		{Title: "[Oshi no Ko]", Year: "2023", Synopsis: "Sixteen-year-old Ai Hoshino is a talented and beautiful idol."},
+		{Title: "[Oshi no Ko]", Year: "2024", Synopsis: "The ending of this drama is told in Oshi no Ko: The Final Act."},
+	})
+	if got[0].Year != "2023" || got[0].Score != exactScore() {
+		t.Fatalf("anime first: %+v", titlesAndScores(got))
+	}
+	if got[1].Year != "2024" || got[1].Score != exactScore() {
+		t.Fatalf("live action should not gain synopsis lift: %+v", titlesAndScores(got))
+	}
+}
+
+func TestRankBondScarletNotExact(t *testing.T) {
+	got := rankTitle("Scarlet Bond", []Candidate{
+		{Title: "Bond Scarlet", Year: "2022"},
+		{Title: "Scarlet Bond", Year: "2022"},
+	})
+	if got[0].Title != "Scarlet Bond" || got[0].Score != exactScore() {
+		t.Fatalf("norm-exact first: %+v", got)
+	}
+	if got[1].Title != "Bond Scarlet" || got[1].Jaccard != 1 || got[1].Score != 1/scoreDen() {
+		t.Fatalf("same tokens but not exact: %+v", got[1])
 	}
 }
 

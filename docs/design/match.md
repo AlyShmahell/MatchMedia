@@ -22,7 +22,7 @@ GET retries, per-attempt timeout (`provider_timeout_ms`), and **capped exponenti
 
 A provider that **errors after retries** on `match.cooldown_fails` jobs in a row (default 2 if unset; shipped YAML is 5) is skipped for a jittered cooldown from `match.cooldown.min_exp` / `max_exp` (default 16/19: first skip ~1–2 min, cap ~4.4–8.7 min). Each cooldown start bumps the exponent; a later success resets streak and exponent. Empty 200s do not count. A dead parent context (batch leftover or cancel) is not a failure; a per-attempt timeout while the job context is still alive is. The cooldown list lives on the worker for the process lifetime. A cooldown skip does not wipe candidates from other providers: if any wanted provider returned hits, the job is ranked and `error` stays empty. Zero candidates with `ok == 0` and at least one provider error (including all-cooldown) stay `status: error` with `job.Error` as `key: message` joined by `"; "` (YAML provider keys).
 
-After rank, auto-`matched` follows the set-ranker rules below (`min_score`, prefer + `queryCov`, `solo_min_score` only after prefer). Otherwise `status: manual`; the user picks via `POST /v1/jobs/{id}/select`. Zero hits stay `unmatched`.
+After rank, auto-`matched` follows the set-ranker rules below (`min_score`, or typed prefer + `queryCov`). Otherwise `status: manual`; the user picks via `POST /v1/jobs/{id}/select`. Zero hits stay `unmatched`.
 
 An optional YAML `catalog` block on a provider lists seasons and episodes with the same GET + JSON-path walker (`url`, `query`, `items`, `fields`, `year`, `poster_prefix`). Vars include `{id}`, `{season}`, `{season_id}`. If `episodes.url` contains `{season}` or `{season_id}`, the engine GETs once per season; otherwise one episodes dump is grouped by `fields.season`. Auto-match and `select` fetch the catalog for the chosen title. `POST /v1/jobs/{id}/catalog` `{provider,id}` loads it for any candidate on the job without changing `match` or `status`. `catalog: null` means not loaded; `[]` means loaded nothing. After pending work, the worker backfills `matched` jobs whose match provider has a catalog block and `catalog` is still null. `POST /v1/match` and retry clear catalog fields. Movies and providers without the block skip.
 
@@ -40,26 +40,30 @@ The grouper still clusters disk names with SequenceMatcher. Candidate ranking is
 - Jaccard `J` is the best `|q ∩ t| / |q ∪ t|` over the primary title and each extra attr whose key starts with `title` (Jikan `title_en`, TVMaze `title_aka` / `title_aka_2`, …), scored as its own token set so an exact alias is `1`.
 - Candidate set (for `queryCov`, `parentCov`, and content overlap) = union of those same title strings.
 - **Content tokens** = `titleNorm` fields after `match.plot_stop` and length &lt; 3 (same filter as plot).
-- Plot `func` is length-weighted coverage of content tokens from the job **title** (not parent) in the synopsis. A token that appears in two or more synopses in this result list is down-weighted (`0.25`). Empty synopsis → `0`.
+- Title-in-synopsis `func` is length-weighted coverage of content tokens from the job **title** (not parent) in the candidate synopsis. A token that appears in two or more synopses in this result list is down-weighted (`0.25`). Empty synopsis → `0`. This is not plot-to-plot (jobs have no synopsis).
 - `parentCov` = coverage of content tokens from a different parent folder in the candidate set (0 if no parent).
-- Displayed `Score` = `J + (1 − J) · max(func, parentCov)`. When `J = 1`, Score is `1`.
+- Displayed `Score` = `(J + title_lift · max(func, parentCov) + exact_lift · exact) / (1 + title_lift + exact_lift)` (shipped `0.15` / `0.25`). When `J == 1`, title-in-syn and parentCov are omitted so synopsis cannot reorder exact titles. `exact` is `1` when `titleNorm` of the job title equals `titleNorm` of the candidate **primary** title (aliases do not count). Primary exact is `(1 + exact_lift) / den`; Score stays in `[0, 1]`.
 - Sort: content-token overlap with the job title beats none; then higher Score; then job title tokens as a prefix of the candidate **primary** title; then higher Jaccard; then year match when the job has a year.
-- A provider `titles` block (TVMaze: `/shows/{id}/akas`, `max: 3`) may fetch aliases after search. Failed GETs are ignored. Candidates whose primary title already covers every content token of the job skip the extra GET. Only aliases that share a content token with the job are stored as `title_aka` / `title_aka_2` / ….
+- A provider `titles` block (TVMaze: `/shows/{id}/akas`, `max: 3`) may fetch aliases after search. Failed GETs are ignored. Candidates whose primary title already covers every **title** token of the job skip the extra GET. Only aliases that share a content token with the job are stored as `title_aka` / `title_aka_2` / ….
 - Search, detail, and catalog synopses are clipped at `match.synopsis_limit` (shipped 4000 runes).
-- `queryCov` = share of **title** tokens (not parent) found in the candidate set. Used only for auto-match after prefer.
+- `queryCov` = share of **title** tokens (not parent) found in the candidate set. Used for unique full-coverage auto-match and typed prefer.
 
 Jobs record `ranker: set`.
 
-`match.prefer.anime` (`language: Japanese`, `kind: Animation`) runs before rank. Typed `anime` jobs use it as before. Untyped scan jobs use the same filter when any candidate matches; if none match, all candidates stay. Jikan ships static `attrs: { language: Japanese, kind: Animation }` so prefer can fire on those hits.
+`match.prefer.anime` (`language: Japanese`, `kind: Animation`) is a typed-job auto-match hint, not a filter. Rank always scores every provider hit; `job.candidates` stays complete so `select` can pick a non-prefer row. Prefer runs only when `job.type` is a key under `match.prefer` (ingest `type: anime`). Untyped scan and typeless ingest never prefer. Jikan ships static `attrs: { language: Japanese, kind: Animation }` so typed anime prefer can see those hits.
 
 Auto-`matched` if:
 
-1. best **Jaccard** `>= match.min_score` and the Jaccard gap to second is `>= match.min_margin`, or
-2. prefer actually filtered, and either a single remaining candidate’s `Score` meets `solo_min_score` (plot can lift a Japanese-only title), or `queryCov == 1` with the usual margin on `Score`.
+1. best `max(Jaccard, Score) >= match.min_score` and (one candidate, or that strength gap to second is `>= match.min_margin`), or
+2. best **Score** `>= match.min_score` and the Score gap to second is `>= match.min_margin` (displayed 0–1 Score can lead even when Jaccard is close), or
+3. the job type has a prefer map, at least two candidates match it, the best of those has `queryCov == 1`, and its Score gap to the next prefer hit is `>= match.min_margin`, or
+4. the job title has a content token (`match.plot_stop` / length &lt; 3) and exactly one **work** has `queryCov == 1` and that row is ranked first (short nickname or solo official title with extra words). Provider clones that share the covering title (`titleNorm` of the primary/alias with best Jaccard) and year count as one work.
 
-A weak solo hit does **not** use `solo_min_score` unless prefer filtered. That stops a lone near-miss from auto-matching before deferred providers run.
+`job.candidates` always stays the full ranked list.
 
-`defer: true` providers still run only if the fast pass is thin: fewer than `match.min_hits` or best **Jaccard** below `match.min_score`. A prefer-filtered auto-match on the fast pass skips defer. Fuzzy TVMaze near-misses that prefer did not keep stay `manual` and continue to Jikan.
+A single prefer-shaped hit does not auto-match. `solo_min_score` is ignored.
+
+`defer: true` providers still run only if the fast pass is thin: fewer than `match.min_hits` or best **Jaccard** below `match.min_score`. A Jaccard auto-match on the fast pass skips defer. Weak fast-pass hits stay `manual` and continue to deferred providers; unique `queryCov` is applied on the final ranked list.
 
 Grouped and ingested jobs share `runOne`.
 

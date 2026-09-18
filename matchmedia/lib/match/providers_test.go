@@ -880,6 +880,41 @@ func TestSearchProviderSkipsBookwormSubset(t *testing.T) {
 	}
 }
 
+func TestSearchProviderHydratesSpyXFamilyAka(t *testing.T) {
+	var aka atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/search"):
+			_ = json.NewEncoder(w).Encode([]any{
+				map[string]any{"show": map[string]any{"id": 1, "name": "Spy×Family", "premiered": "2022", "url": "http://t"}},
+			})
+		case strings.HasPrefix(r.URL.Path, "/shows/"):
+			aka.Add(1)
+			_ = json.NewEncoder(w).Encode([]any{
+				map[string]any{"name": "Spy x Family"},
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	cfg := titlesTestCfg(srv.URL)
+	cands, err := searchProviders(context.Background(), cfg, newHTTP(cfg), Job{Title: "Spy X Family"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if aka.Load() != 1 {
+		t.Fatalf("aka fetches=%d want 1", aka.Load())
+	}
+	if len(cands) != 1 || cands[0].Attrs["title_aka"] != "Spy x Family" {
+		t.Fatalf("cands=%+v", cands)
+	}
+	ranked := rank(cfg, Job{Title: "Spy X Family"}, cands)
+	if ranked[0].Jaccard != 1 {
+		t.Fatalf("jaccard=%v", ranked[0].Jaccard)
+	}
+}
+
 func TestSearchProviderTitlesFailureIsNonFatal(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/search") {

@@ -27,14 +27,25 @@ func rank(cfg config.Config, job Job, cands []Candidate) []Candidate {
 		synSets[i] = tokenSet(c.Synopsis)
 	}
 	df := plotDF(qplot, synSets)
+	titleLift := cfg.TitleLift()
+	exactLift := cfg.ExactLift()
+	den := 1 + titleLift + exactLift
+	jobNorm := titleNorm(job.Title)
 	for i := range out {
 		j := out[i].Jaccard
-		plot := plotFunc(qplot, synSets[i], df)
-		parentCov := coverage(parentSet, candidateTitleSet(out[i]))
-		if parentCov > plot {
-			plot = parentCov
+		plot := 0.0
+		if j < 1 {
+			plot = plotFunc(qplot, synSets[i], df)
+			parentCov := coverage(parentSet, candidateTitleSet(out[i]))
+			if parentCov > plot {
+				plot = parentCov
+			}
 		}
-		out[i].Score = j + (1-j)*plot
+		exact := 0.0
+		if jobNorm != "" && jobNorm == titleNorm(out[i].Title) {
+			exact = 1
+		}
+		out[i].Score = (j + titleLift*plot + exactLift*exact) / den
 	}
 	sortByScore(out, job.Title, year, stop)
 	return out
@@ -104,16 +115,28 @@ func contentSet(s string, stop map[string]struct{}) map[string]struct{} {
 }
 
 func bestTitleJaccard(q map[string]struct{}, c Candidate) float64 {
-	j := jaccard(q, tokenSet(c.Title))
+	j, _ := bestCoveringTitle(q, c)
+	return j
+}
+
+func bestCoveringTitle(q map[string]struct{}, c Candidate) (float64, string) {
+	bestJ := jaccard(q, tokenSet(c.Title))
+	best := c.Title
 	for k, v := range c.Attrs {
 		if !strings.HasPrefix(strings.ToLower(k), "title") {
 			continue
 		}
-		if alt := jaccard(q, tokenSet(v)); alt > j {
-			j = alt
+		if alt := jaccard(q, tokenSet(v)); alt > bestJ {
+			bestJ = alt
+			best = v
 		}
 	}
-	return j
+	return bestJ, best
+}
+
+func coveringWorkKey(jobTitle string, c Candidate) string {
+	_, title := bestCoveringTitle(tokenSet(jobTitle), c)
+	return titleNorm(title) + "\t" + strings.TrimSpace(c.Year)
 }
 
 func candidateTitleSet(c Candidate) map[string]struct{} {

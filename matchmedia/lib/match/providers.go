@@ -155,13 +155,14 @@ func hydrateTitles(ctx context.Context, httpc *httpClient, name string, spec con
 		return
 	}
 	jobContent := contentSet(job.Title, stop)
+	jobTokens := tokenSet(job.Title)
 	n := 0
 	max := titlesMax(spec)
 	for i := range cands {
 		if n >= max {
 			return
 		}
-		if coverage(jobContent, contentSet(cands[i].Title, stop)) >= 1 {
+		if coverage(jobTokens, tokenSet(cands[i].Title)) >= 1 {
 			continue
 		}
 		n++

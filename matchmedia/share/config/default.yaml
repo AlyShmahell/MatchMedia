@@ -6,7 +6,7 @@ http:
     min_exp: 10
     max_exp: 13
   provider_timeout_ms: 10000
-version: "0.0.6"
+version: "0.0.7"
 session:
   ttl_ms: 86400000
   ttl_max_ms: 86400000
@@ -14,7 +14,6 @@ scan:
   sample_videos: 5
 match:
   min_score: 0.72
-  solo_min_score: 0.01
   min_margin: 0.04
   min_hits: 1
   workers: 8
@@ -26,6 +25,8 @@ match:
     anime:
       language: Japanese
       kind: Animation
+  title_lift: 0.15
+  exact_lift: 0.25
   plot_stop: [a, an, the, of, to, in, on, at, is, and, or, my, i, this, that, for, with, from, as, by]
   wait_cap: 500
   synopsis_limit: 4000

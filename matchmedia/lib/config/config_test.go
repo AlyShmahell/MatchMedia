@@ -59,6 +59,18 @@ func TestMatchSoloScore(t *testing.T) {
 	}
 }
 
+func TestTitleAndExactLift(t *testing.T) {
+	if (Config{}).TitleLift() != 0.15 || (Config{}).ExactLift() != 0.25 {
+		t.Fatal("unset lifts should use shipped defaults")
+	}
+	if (Config{Match: Match{TitleLift: 0.1, ExactLift: 0.3}}).TitleLift() != 0.1 {
+		t.Fatal("title_lift=0.1")
+	}
+	if (Config{Match: Match{TitleLift: 0.1, ExactLift: 0.3}}).ExactLift() != 0.3 {
+		t.Fatal("exact_lift=0.3")
+	}
+}
+
 func TestMatchMinHits(t *testing.T) {
 	if (Config{Match: Match{MinHits: 3}}).MatchMinHits() != 3 {
 		t.Fatal("min_hits=3")
@@ -148,6 +160,8 @@ func TestLoadMissingTunables(t *testing.T) {
 		{"scan:\n  sample_videos: 0\n", "scan.sample_videos must be > 0"},
 		{"match:\n  wait_cap: 0\n", "match.wait_cap must be > 0"},
 		{"match:\n  synopsis_limit: 0\n", "match.synopsis_limit must be > 0"},
+		{"match:\n  title_lift: -1\n", "match.title_lift must be >= 0"},
+		{"match:\n  exact_lift: -1\n", "match.exact_lift must be >= 0"},
 		{"session:\n  ttl_max_ms: 0\n", "session.ttl_max_ms must be > 0"},
 	}
 	for _, tc := range cases {

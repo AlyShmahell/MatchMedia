@@ -89,6 +89,8 @@ type Match struct {
 	Cooldown      ExpRange                     `yaml:"cooldown"`
 	Prefer        map[string]map[string]string `yaml:"prefer"`
 	PlotStop      []string                     `yaml:"plot_stop"`
+	TitleLift     float64                      `yaml:"title_lift"`
+	ExactLift     float64                      `yaml:"exact_lift"`
 	WaitCap       int                          `yaml:"wait_cap"`
 	SynopsisLimit int                          `yaml:"synopsis_limit"`
 }
@@ -284,6 +286,12 @@ func Validate(c Config) error {
 	if len(wordList(c.Match.PlotStop)) == 0 {
 		return fmt.Errorf("match.plot_stop is empty")
 	}
+	if c.Match.TitleLift < 0 {
+		return fmt.Errorf("match.title_lift must be >= 0")
+	}
+	if c.Match.ExactLift < 0 {
+		return fmt.Errorf("match.exact_lift must be >= 0")
+	}
 	if c.Group.SeqThreshold <= 0 || c.Group.SeqThreshold > 1 {
 		return fmt.Errorf("group.seq_threshold must be in (0, 1]")
 	}
@@ -400,6 +408,20 @@ func (c Config) MatchMinHits() int {
 
 func (c Config) PlotStop() map[string]struct{} {
 	return wordSet(c.Match.PlotStop)
+}
+
+func (c Config) TitleLift() float64 {
+	if c.Match.TitleLift <= 0 {
+		return 0.15
+	}
+	return c.Match.TitleLift
+}
+
+func (c Config) ExactLift() float64 {
+	if c.Match.ExactLift <= 0 {
+		return 0.25
+	}
+	return c.Match.ExactLift
 }
 
 func (c Config) MatchCooldownFails() int {
