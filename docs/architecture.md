@@ -30,7 +30,7 @@ Dist is binary + `config/` + `public/` only. The packager’s tarball is that tr
 | DELETE | `/v1/jobs` | delete that session’s jobs file; abort grouping if it is the active scan |
 | GET | `/v1/match/log` | in-memory waits for jobs in `?session=` |
 | POST | `/v1/ingest` | parse rows, mint a session, `202 {"session","jobs"}` |
-| POST | `/v1/scan` | list videos, mint a session, `202 {"session","files"}`, group then match |
+| POST | `/v1/scan` | list videos, mint a session, `202 {"session","files","mode"}`; `mode` is `rescan` (default) or `changes` (`require_episode_nfo`, default true; complete titles skip the worker) |
 | GET | `/v1/scan/status` | grouping progress for `?session=` |
 | POST | `/v1/match` | rematch all jobs in that session (`202`) |
 | POST | `/v1/retry` | rematch `error` and `unmatched` jobs in that session (`202`) |

@@ -135,6 +135,7 @@ sbody="$(printf '%s\n' "$scan" | sed '$d')"
 [ "$scode" = "202" ]
 echo "$sbody" | grep -q '"session"'
 echo "$sbody" | grep -q '"files"'
+echo "$sbody" | grep -q '"mode":"rescan"'
 echo "$sbody" | grep -qE '"files":\s*[1-9]'
 scansess="$(session_id "$sbody")"
 [ -n "$scansess" ]

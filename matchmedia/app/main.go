@@ -159,19 +159,26 @@ func main() {
 	mux.HandleFunc("POST /v1/scan", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Path               string `json:"path"`
+			Mode               string `json:"mode"`
+			RequireEpisodeNFO  *bool  `json:"require_episode_nfo"`
 			SkipEpisodePosters bool   `json:"skip_episode_posters"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "path required"})
 			return
 		}
+		mode, err := scan.NormalizeMode(body.Mode)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
 		skip := skipEpisodePosters(r) || body.SkipEpisodePosters
 		worker.SetSkipEpisodePosters(skip)
-		target := body.Path
-		if target == "" {
-			target = cfg.BrowseRoot
+		target, err := scan.ResolveTarget(cfg.BrowseRoot, body.Path)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
 		}
-		target = filepath.Clean(target)
 		children, err := scan.Children(cfg.BrowseRoot, target, cfg.SampleVideos())
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -191,8 +198,8 @@ func main() {
 			return
 		}
 		ctx := scans.start(sess, files, len(children))
-		writeJSON(w, http.StatusAccepted, map[string]any{"session": sess, "files": files})
-		go enqueueScan(ctx, cfg, store, worker, scans, sess, children)
+		writeJSON(w, http.StatusAccepted, map[string]any{"session": sess, "files": files, "mode": mode})
+		go enqueueScan(ctx, cfg, store, worker, scans, sess, children, mode, scan.RequireEpisodeNFO(mode, body.RequireEpisodeNFO))
 	})
 	mux.HandleFunc("POST /v1/ingest", func(w http.ResponseWriter, r *http.Request) {
 		name, ct, body, err := ingestBody(r)
@@ -621,7 +628,7 @@ func filterWaits(all []match.Wait, list []match.Job) []match.Wait {
 	return out
 }
 
-func enqueueScan(ctx context.Context, cfg config.Config, store *jobs.Store, worker *jobs.Worker, scans *scanRun, session string, children []scan.Child) {
+func enqueueScan(ctx context.Context, cfg config.Config, store *jobs.Store, worker *jobs.Worker, scans *scanRun, session string, children []scan.Child, mode string, requireEpisodeNFO bool) {
 	defer scans.done()
 	defer func() {
 		if ctx.Err() != nil {
@@ -635,6 +642,9 @@ func enqueueScan(ctx context.Context, cfg config.Config, store *jobs.Store, work
 			return
 		}
 		created := jobsFromShows(match.Group(cfg, cfg.BrowseRoot, child.Path), cfg.BrowseRoot, child)
+		if mode == scan.ModeChanges {
+			created = match.ApplyChanges(cfg, created, requireEpisodeNFO)
+		}
 		if ctx.Err() != nil {
 			return
 		}
@@ -645,7 +655,9 @@ func enqueueScan(ctx context.Context, cfg config.Config, store *jobs.Store, work
 				log.Printf("scan: append: %v", err)
 				return
 			}
-			worker.Kick()
+			if jobsNeedKick(created) {
+				worker.Kick()
+			}
 		}
 		n := child.Videos
 		if n < 1 {
@@ -653,6 +665,15 @@ func enqueueScan(ctx context.Context, cfg config.Config, store *jobs.Store, work
 		}
 		scans.step(session, n)
 	}
+}
+
+func jobsNeedKick(created []match.Job) bool {
+	for _, job := range created {
+		if job.Status == "pending" {
+			return true
+		}
+	}
+	return false
 }
 
 func jobsFromShows(shows []match.Grouped, root string, child scan.Child) []match.Job {
