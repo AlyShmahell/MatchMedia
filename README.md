@@ -40,12 +40,15 @@ TVMaze and Jikan need no key. Set OMDb and TMDB keys in `data/secrets`, or in th
 
 ## Use
 
+### As a RESTful API (Intended Use Case):
+
+Check [architecture](docs/architecture.md) then [match](docs/design/match.md).
+
+### As a WebUI (Intended for Development):
+Check [gui](docs/design/gui.md):
 - **Scan** a path under the browse root. MatchMedia groups files into titles, then searches providers.
 - **Ingest** a CSV or JSON list of titles (optional year, type, season, episode, IMDb id).
 - High-confidence hits auto-match. Close scores stay **manual** until you pick a candidate.
 - Matched titles are written under `data/catalog` as NFO trees with posters.
 
-## From source
 
-- Developers build and package the same tarball with `./build/run` (rebuild and package). See [docs/dev/workflow.md](docs/dev/workflow.md). 
-- Design notes: [architecture](docs/architecture.md), [match](docs/design/match.md), [gui](docs/design/gui.md).
