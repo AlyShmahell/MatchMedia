@@ -33,6 +33,14 @@ func titlesOf(got []Grouped) []string {
 
 func testCfg(t *testing.T) config.Config {
 	t.Helper()
+	dir := t.TempDir()
+	home := filepath.Join(dir, "home")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_DATA_HOME", filepath.Join(dir, "data"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state"))
 	cfg, err := config.Load(filepath.Join("..", "..", "share", "config", "default.yaml"))
 	if err != nil {
 		t.Fatal(err)

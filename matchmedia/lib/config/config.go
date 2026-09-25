@@ -12,21 +12,22 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const runOverlay = "/run/matchmedia/config.yaml"
+const appName = "matchmedia"
 
 type Config struct {
-	HTTP       HTTP                `yaml:"http"`
-	DataDir    string              `yaml:"data_dir"`
-	BrowseRoot string              `yaml:"browse_root"`
-	Version    string              `yaml:"version"`
-	Match      Match               `yaml:"match"`
-	Session    Session             `yaml:"session"`
-	Group      Group               `yaml:"group"`
-	Ingest     Ingest              `yaml:"ingest"`
-	Scan       Scan                `yaml:"scan"`
-	Providers  map[string]Provider `yaml:"providers"`
-	ConfigPath string              `yaml:"-"`
-	ExeDir     string              `yaml:"-"`
+	HTTP        HTTP                `yaml:"http"`
+	DataDir     string              `yaml:"data_dir"`
+	BrowseRoots []string            `yaml:"browse_roots"`
+	Version     string              `yaml:"version"`
+	Match       Match               `yaml:"match"`
+	Session     Session             `yaml:"session"`
+	Group       Group               `yaml:"group"`
+	Ingest      Ingest              `yaml:"ingest"`
+	Scan        Scan                `yaml:"scan"`
+	Providers   map[string]Provider `yaml:"providers"`
+	ConfigPath  string              `yaml:"-"`
+	ExeDir      string              `yaml:"-"`
+	StateDir    string              `yaml:"-"`
 }
 
 type Group struct {
@@ -178,6 +179,154 @@ func resolvePath(base, p, fallback string) string {
 	return filepath.Join(base, p)
 }
 
+func xdgBase(envKey, homeRel string) (string, error) {
+	if v := strings.TrimSpace(os.Getenv(envKey)); filepath.IsAbs(v) {
+		return v, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" || !filepath.IsAbs(home) {
+		return "", fmt.Errorf("%s unset and HOME unavailable", envKey)
+	}
+	return filepath.Join(home, homeRel), nil
+}
+
+func appDir(envKey, homeRel string) (string, error) {
+	base, err := xdgBase(envKey, homeRel)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(base, appName), nil
+}
+
+func dataDirDefault() (string, error) {
+	return appDir("XDG_DATA_HOME", filepath.Join(".local", "share"))
+}
+
+func mergeExisting(base []byte, path string) ([]byte, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return base, nil
+		}
+		return nil, err
+	}
+	if len(b) == 0 {
+		return base, nil
+	}
+	return merge(base, b)
+}
+
+func DefaultConfigPath() (string, error) {
+	dir, err := dataDirDefault()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "config", "default.yaml"), nil
+}
+
+func PublicDir() (string, error) {
+	dir, err := dataDirDefault()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "public"), nil
+}
+
+func resolveBrowseRoots(entries []string) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, entry := range entries {
+		p := filepath.Clean(resolveBrowseEntry(entry))
+		if p == "" || p == "." {
+			continue
+		}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		st, err := os.Stat(p)
+		if err != nil || !st.IsDir() {
+			continue
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
+	return out
+}
+
+func resolveBrowseEntry(entry string) string {
+	entry = strings.Trim(strings.TrimSpace(entry), `"'`)
+	switch entry {
+	case "$XDG_VIDEOS_DIR", "${XDG_VIDEOS_DIR}":
+		return userMediaDir("XDG_VIDEOS_DIR", "Videos")
+	case "$XDG_MUSIC_DIR", "${XDG_MUSIC_DIR}":
+		return userMediaDir("XDG_MUSIC_DIR", "Music")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" || !filepath.IsAbs(home) {
+		home = ""
+	}
+	if home != "" {
+		entry = strings.ReplaceAll(entry, "${HOME}", home)
+		entry = strings.ReplaceAll(entry, "$HOME", home)
+	}
+	if entry == "" {
+		return ""
+	}
+	if filepath.IsAbs(entry) || home == "" {
+		return entry
+	}
+	return filepath.Join(home, entry)
+}
+
+func userMediaDir(key, fallback string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" || !filepath.IsAbs(home) {
+		return ""
+	}
+	raw := userDirValue(key)
+	if raw == "" {
+		return filepath.Join(home, fallback)
+	}
+	raw = strings.ReplaceAll(raw, "${HOME}", home)
+	raw = strings.ReplaceAll(raw, "$HOME", home)
+	if filepath.IsAbs(raw) {
+		return raw
+	}
+	return filepath.Join(home, raw)
+}
+
+func userDirValue(key string) string {
+	base, err := xdgBase("XDG_CONFIG_HOME", ".config")
+	if err != nil {
+		return ""
+	}
+	b, err := os.ReadFile(filepath.Join(base, "user-dirs.dirs"))
+	if err != nil {
+		return ""
+	}
+	prefix := key + "="
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") || !strings.HasPrefix(line, prefix) {
+			continue
+		}
+		val := strings.TrimSpace(strings.TrimPrefix(line, prefix))
+		return strings.Trim(val, `"'`)
+	}
+	return ""
+}
+
+func resolveDataDir(exeDir, p string) (string, error) {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return dataDirDefault()
+	}
+	if filepath.IsAbs(p) {
+		return p, nil
+	}
+	return filepath.Join(exeDir, p), nil
+}
+
 func Load(path string) (Config, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -191,35 +340,34 @@ func Load(path string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	if b, err := os.ReadFile(runOverlay); err == nil && len(b) > 0 {
-		raw, err = merge(raw, b)
-		if err != nil {
-			return Config{}, err
-		}
+	base, err := decode(raw)
+	if err != nil {
+		return Config{}, err
+	}
+	dataDir, err := resolveDataDir(root, base.DataDir)
+	if err != nil {
+		return Config{}, err
+	}
+	raw, err = mergeExisting(raw, overlayPath(dataDir))
+	if err != nil {
+		return Config{}, err
 	}
 	cfg, err := decode(raw)
 	if err != nil {
 		return Config{}, err
 	}
+	dataDir, err = resolveDataDir(root, cfg.DataDir)
+	if err != nil {
+		return Config{}, err
+	}
+	stateDir, err := appDir("XDG_STATE_HOME", filepath.Join(".local", "state"))
+	if err != nil {
+		return Config{}, err
+	}
 	cfg.ExeDir = root
-	cfg.DataDir = resolvePath(root, cfg.DataDir, "data")
-	if b, err := os.ReadFile(filepath.Join(cfg.DataDir, "config.yaml")); err == nil && len(b) > 0 {
-		raw, err = merge(raw, b)
-		if err != nil {
-			return Config{}, err
-		}
-		cfg, err = decode(raw)
-		if err != nil {
-			return Config{}, err
-		}
-		cfg.ExeDir = root
-		cfg.DataDir = resolvePath(root, cfg.DataDir, "data")
-	}
-	if strings.TrimSpace(cfg.BrowseRoot) == "" {
-		cfg.BrowseRoot = cfg.DataDir
-	} else {
-		cfg.BrowseRoot = resolvePath(root, cfg.BrowseRoot, cfg.DataDir)
-	}
+	cfg.StateDir = stateDir
+	cfg.DataDir = dataDir
+	cfg.BrowseRoots = resolveBrowseRoots(cfg.BrowseRoots)
 	if cfg.Providers == nil {
 		cfg.Providers = map[string]Provider{}
 	}
@@ -526,7 +674,7 @@ func SecretsStatus(cfg Config) map[string]bool {
 }
 
 func secretsPath(dataDir string) string {
-	return filepath.Join(dataDir, "secrets")
+	return filepath.Join(dataDir, "config", "secrets")
 }
 
 func readSecretsMap(dataDir string) (map[string]string, error) {
@@ -554,7 +702,7 @@ func writeSecretsMap(dataDir string, keys map[string]string) error {
 	if keys == nil {
 		keys = map[string]string{}
 	}
-	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(secretsPath(dataDir)), 0o700); err != nil {
 		return err
 	}
 	b, err := yaml.Marshal(keys)
@@ -593,7 +741,7 @@ func applySecrets(cfg *Config) {
 }
 
 func overlayPath(dataDir string) string {
-	return filepath.Join(dataDir, "config.yaml")
+	return filepath.Join(dataDir, "config", "overlay.yaml")
 }
 
 func ReadOverlay(dataDir string) (map[string]any, error) {
@@ -652,7 +800,7 @@ func Overlay(cfg *Config, patch map[string]any) (map[string]any, error) {
 	if err := validateOverlay(*cfg, cur); err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(overlayPath(cfg.DataDir)), 0o700); err != nil {
 		return nil, err
 	}
 	b, err := yaml.Marshal(cur)

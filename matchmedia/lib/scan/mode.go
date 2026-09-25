@@ -3,6 +3,7 @@ package scan
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	matchfs "github.com/alyshmahell/matchmedia/lib/fs"
 )
@@ -33,17 +34,33 @@ func RequireEpisodeNFO(mode string, flag *bool) bool {
 	return *flag
 }
 
-func ResolveTarget(root, path string) (string, error) {
-	root = filepath.Clean(root)
-	if path == "" {
-		path = root
+func ResolveTarget(roots []string, path string) (string, string, error) {
+	roots = matchfsClean(roots)
+	if len(roots) == 0 {
+		return "", "", fmt.Errorf("browse root is empty")
+	}
+	if strings.TrimSpace(path) == "" {
+		return roots[0], roots[0], nil
 	}
 	if !filepath.IsAbs(path) {
-		return "", fmt.Errorf("path must be absolute")
+		return "", "", fmt.Errorf("path must be absolute")
 	}
 	path = filepath.Clean(path)
-	if !matchfs.Within(root, path) {
-		return "", fmt.Errorf("path outside browse_root")
+	root, ok := matchfs.Containing(roots, path)
+	if !ok {
+		return "", "", fmt.Errorf("path outside browse roots")
 	}
-	return path, nil
+	return path, root, nil
+}
+
+func matchfsClean(roots []string) []string {
+	out := make([]string, 0, len(roots))
+	for _, root := range roots {
+		root = filepath.Clean(strings.TrimSpace(root))
+		if root == "" || root == "." {
+			continue
+		}
+		out = append(out, root)
+	}
+	return out
 }

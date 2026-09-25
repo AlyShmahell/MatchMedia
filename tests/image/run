@@ -1,8 +1,9 @@
 #!/bin/sh
 set -eu
-test -x /opt/matchmedia/matchmedia
-test -f /opt/matchmedia/config/default.yaml
-test -f /opt/matchmedia/public/index.html
-test -f /opt/matchmedia/public/style.css
-test -f /opt/matchmedia/public/app.js
+root=/home/matchmedia/.local
+test -x "$root/bin/matchmedia"
+test -f "$root/share/matchmedia/config/default.yaml"
+test -f "$root/share/matchmedia/public/index.html"
+test -f "$root/share/matchmedia/public/style.css"
+test -f "$root/share/matchmedia/public/app.js"
 echo "image ok"

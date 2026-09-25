@@ -20,21 +20,21 @@ type Listing struct {
 	Entries []Entry `json:"entries"`
 }
 
-func List(root, rel string) (Listing, error) {
-	root = filepath.Clean(root)
-	if root == "" {
+func List(roots []string, rel string) (Listing, error) {
+	roots = cleanRoots(roots)
+	if len(roots) == 0 {
 		return Listing{}, fmt.Errorf("browse root is empty")
 	}
-	target := root
-	if rel != "" {
-		if filepath.IsAbs(rel) {
-			target = rel
-		} else {
-			target = filepath.Join(root, rel)
-		}
+	rel = strings.TrimSpace(rel)
+	if rel == "" || rel == "." {
+		return rootsListing(roots), nil
 	}
-	target = filepath.Clean(target)
-	if !Within(root, target) {
+	if !filepath.IsAbs(rel) {
+		return Listing{}, fmt.Errorf("path %q is outside browse root", rel)
+	}
+	target := filepath.Clean(rel)
+	root, ok := Containing(roots, target)
+	if !ok {
 		return Listing{}, fmt.Errorf("path %q is outside browse root", rel)
 	}
 	info, err := os.Stat(target)
@@ -49,7 +49,9 @@ func List(root, rel string) (Listing, error) {
 		return Listing{}, err
 	}
 	out := Listing{Path: target, Root: root, Entries: []Entry{}}
-	if target != root {
+	if target == root {
+		out.Parent = "."
+	} else {
 		out.Parent = filepath.Dir(target)
 	}
 	for _, e := range ents {
@@ -64,6 +66,44 @@ func List(root, rel string) (Listing, error) {
 		out.Entries = append(out.Entries, Entry{Name: e.Name(), Path: p, Dir: true})
 	}
 	return out, nil
+}
+
+func rootsListing(roots []string) Listing {
+	out := Listing{Entries: []Entry{}}
+	for _, root := range roots {
+		name := filepath.Base(root)
+		if name == "" || name == string(os.PathSeparator) {
+			name = root
+		}
+		out.Entries = append(out.Entries, Entry{Name: name, Path: root, Dir: true})
+	}
+	return out
+}
+
+func cleanRoots(roots []string) []string {
+	out := make([]string, 0, len(roots))
+	for _, root := range roots {
+		root = filepath.Clean(strings.TrimSpace(root))
+		if root == "" || root == "." {
+			continue
+		}
+		out = append(out, root)
+	}
+	return out
+}
+
+func Containing(roots []string, path string) (string, bool) {
+	path = filepath.Clean(path)
+	best := ""
+	for _, root := range cleanRoots(roots) {
+		if !Within(root, path) {
+			continue
+		}
+		if len(root) > len(best) {
+			best = root
+		}
+	}
+	return best, best != ""
 }
 
 func Rel(root, path string) (string, error) {

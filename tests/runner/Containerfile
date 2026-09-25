@@ -2,5 +2,13 @@ FROM docker.io/library/debian:trixie-slim
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates wget libgomp1 libcurl4 libvulkan1 mesa-vulkan-drivers \
   && rm -rf /var/lib/apt/lists/*
-WORKDIR /opt/matchmedia
-CMD ["/opt/matchmedia/matchmedia"]
+WORKDIR /home/matchmedia
+RUN mkdir -p /home/matchmedia/.local/bin \
+    /home/matchmedia/.local/share/matchmedia/config \
+    /home/matchmedia/.local/share/matchmedia/public \
+    /home/matchmedia/.local/state/matchmedia \
+    /home/matchmedia/library \
+  && touch /home/matchmedia/.local/bin/matchmedia \
+  && touch /home/matchmedia/.local/share/matchmedia/config/default.yaml \
+  && touch /home/matchmedia/.local/share/matchmedia/config/overlay.yaml
+CMD ["/home/matchmedia/.local/bin/matchmedia"]

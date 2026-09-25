@@ -129,7 +129,7 @@ echo "$one" | grep -q '"title":"Girls"'
 echo "$one" | grep -q '"seasons"'
 
 scan="$(curl -sS -w '\n%{http_code}' -H 'Content-Type: application/json' \
-  -d '{"path":"/opt/matchmedia/data/library"}' "$URL/v1/scan")"
+  -d '{"path":"/home/matchmedia/library"}' "$URL/v1/scan")"
 scode="$(printf '%s\n' "$scan" | tail -n 1)"
 sbody="$(printf '%s\n' "$scan" | sed '$d')"
 [ "$scode" = "202" ]

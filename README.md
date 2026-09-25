@@ -20,7 +20,7 @@ Shipped providers:
   - [TMDB](https://developer.themoviedb.org/)
 
 ## Install
-Download `matchmedia-<version>-linux-amd64.tar.gz` from [GitHub Releases](https://github.com/alyshmahell/matchmedia/releases). Unpack it. The archive root is `matchmedia/` (binary, `config/`, `public/`, `LICENSE`).
+Download `matchmedia-<version>-linux-amd64.tar.gz` from [GitHub Releases](https://github.com/alyshmahell/matchmedia/releases). Unpack it. The archive root is `matchmedia/` (`.local/bin/matchmedia`, `.local/share/matchmedia/`, `LICENSE`).
 
 ## Run
 From that directo
@@ -28,15 +28,15 @@ From that directo
 ./matchmedia
 ```
 
-The process listens on `http.addr` from `config/default.yaml` (shipped as port 7680). The dev console can also be reached on that host and port.
+The process listens on `http.addr` from `config/default.yaml`, shipped as `127.0.0.1:7680`, so only this computer can open it. Set `http.addr` to `:7680` in `$XDG_DATA_HOME/matchmedia/config/overlay.yaml` to listen on every interface.
 
-Runtime data lives in `data/` next to the binary: session job files, `secrets`, an optional `config.yaml` overlay, and the NFO catalog. Pass `-config` to load a different `default.yaml`.
+The binary belongs in `$HOME/.local/bin/matchmedia`. Shipped `config/default.yaml` and `public/` live in `$XDG_DATA_HOME/matchmedia` (default `~/.local/share/matchmedia`). The user overlay is `config/overlay.yaml` and provider keys are `config/secrets` in that same directory. The NFO catalog is `catalog/` there. Session job files live in `$XDG_STATE_HOME/matchmedia` (default `~/.local/state/matchmedia`). Pass `-config` to load a different `default.yaml`.
 
 ## Library and keys
 
-The folder picker stays inside `browse_root`, which defaults to `data/`. Point it at a real library by setting `browse_root` in `data/config.yaml` (same keys as `default.yaml`).
+The folder picker stays inside `browse_roots` from `$XDG_DATA_HOME/matchmedia/config/default.yaml`. The shipped list is `/mnt`, `/media`, `$XDG_VIDEOS_DIR`, and `$XDG_MUSIC_DIR` (`$HOME/Videos` and `$HOME/Music`, or the paths in `user-dirs.dirs`). A path is allowed only when that directory exists. Replace the list in `$XDG_DATA_HOME/matchmedia/config/overlay.yaml`.
 
-TVMaze and Jikan need no key. Set OMDb and TMDB keys in `data/secrets`, or in the dev console secrets panel.
+TVMaze and Jikan need no key. Set OMDb and TMDB keys in `$XDG_DATA_HOME/matchmedia/config/secrets`, or in the dev console secrets panel.
 
 ## Use
 
@@ -49,6 +49,6 @@ Check [gui](docs/design/gui.md):
 - **Scan** a path under the browse root. MatchMedia groups files into titles, then searches providers.
 - **Ingest** a CSV or JSON list of titles (optional year, type, season, episode, IMDb id).
 - High-confidence hits auto-match. Close scores stay **manual** until you pick a candidate.
-- Matched titles are written under `data/catalog` as NFO trees with posters.
+- Matched titles are written under `$XDG_DATA_HOME/matchmedia/catalog` as NFO trees with posters.
 
 

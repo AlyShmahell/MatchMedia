@@ -21,7 +21,7 @@ rebuild() {
   rm -rf "$DIR/dist"
   mkdir -p "$DIR/dist"
   : >"$DIR/dist/.gitkeep"
-  compose up --build --force-recreate --abort-on-container-exit
+  compose up --build --force-recreate --abort-on-container-exit dist
 }
 
 stage_package() {
@@ -29,7 +29,6 @@ stage_package() {
   mkdir -p "$staging/matchmedia"
   cp -a "$DIR/dist"/. "$staging/matchmedia/"
   rm -f "$staging/matchmedia/.gitkeep"
-  rm -rf "$staging/matchmedia/data"
   if [[ ! -f "$DIR/../LICENSE" ]]; then
     echo "error: $DIR/../LICENSE not found" >&2
     exit 1
@@ -44,16 +43,16 @@ write_tar() {
 }
 
 package() {
-  if [[ ! -x "$DIR/dist/matchmedia" ]]; then
-    echo "error: build/dist/matchmedia not found; rebuild first" >&2
+  if [[ ! -x "$DIR/dist/.local/bin/matchmedia" ]]; then
+    echo "error: build/dist/.local/bin/matchmedia not found; rebuild first" >&2
     exit 1
   fi
   mkdir -p "$DIR/package"
   : >"$DIR/package/.gitkeep"
   local version staging
-  version="$(awk -F'"' '/^version:/{print $2; exit}' "$DIR/dist/config/default.yaml")"
+  version="$(awk -F'"' '/^version:/{print $2; exit}' "$DIR/dist/.local/share/matchmedia/config/default.yaml")"
   if [[ -z "$version" ]]; then
-    echo "error: version missing from build/dist/config/default.yaml" >&2
+    echo "error: version missing from build/dist/.local/share/matchmedia/config/default.yaml" >&2
     exit 1
   fi
 
@@ -64,11 +63,25 @@ package() {
 }
 
 start() {
-  if [[ ! -x "$DIR/dist/matchmedia" ]]; then
-    echo "error: build/dist/matchmedia not found; pick a rebuild option" >&2
+  if [[ ! -x "$DIR/dist/.local/bin/matchmedia" ]]; then
+    echo "error: build/dist/.local/bin/matchmedia not found; pick a rebuild option" >&2
     exit 1
   fi
-  exec "$DIR/dist/matchmedia" "$@"
+  local xdg="$DIR/cache/xdg"
+  mkdir -p "$xdg/.local/bin" \
+    "$xdg/.local/share/matchmedia/config" \
+    "$xdg/.local/state/matchmedia" \
+    "$xdg/.cache" \
+    "$xdg/Videos"
+  rm -rf "$xdg/.local/bin/matchmedia" \
+    "$xdg/.local/share/matchmedia/config/default.yaml" \
+    "$xdg/.local/share/matchmedia/public"
+  cp -a "$DIR/dist/.local/bin/matchmedia" "$xdg/.local/bin/matchmedia"
+  cp -a "$DIR/dist/.local/share/matchmedia/config/default.yaml" "$xdg/.local/share/matchmedia/config/default.yaml"
+  cp -a "$DIR/dist/.local/share/matchmedia/public" "$xdg/.local/share/matchmedia/public"
+  mkdir -p "$xdg/.local/state/matchmedia" \
+    "$xdg/.local/share/matchmedia/catalog"
+  compose up --build --force-recreate --abort-on-container-exit app
 }
 
 # Arrow/enter menu. Sets CHOICE to the 0-based index.

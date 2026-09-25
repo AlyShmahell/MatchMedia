@@ -14,11 +14,13 @@ services:
       context: ./runner
       dockerfile: Containerfile
     volumes:
-      - ../build/dist:/opt/matchmedia:z
-      - ./fixtures/library:/opt/matchmedia/data/library:z
-      - ./config.yaml:/run/matchmedia/config.yaml:z
-    tmpfs:
-      - /opt/matchmedia/data
+      - ../build/dist/.local/bin/matchmedia:/home/matchmedia/.local/bin/matchmedia:z
+      - ../build/dist/.local/share/matchmedia/config/default.yaml:/home/matchmedia/.local/share/matchmedia/config/default.yaml:z
+      - ../build/dist/.local/share/matchmedia/public:/home/matchmedia/.local/share/matchmedia/public:z
+      - ./config.yaml:/home/matchmedia/.local/share/matchmedia/config/overlay.yaml:z
+      - ./fixtures/library:/home/matchmedia/library:z
+    environment:
+      HOME: /home/matchmedia
     depends_on:
       stub:
         condition: service_healthy
@@ -34,7 +36,7 @@ services:
       context: ./runner
       dockerfile: Containerfile
     volumes:
-      - ../build/dist:/opt/matchmedia:z
+      - ../build/dist:/home/matchmedia:z
       - ./image/run:/check:z
     entrypoint: ["/bin/sh", "/check"]
 
@@ -60,9 +62,12 @@ services:
       context: ./runner
       dockerfile: Containerfile
     volumes:
-      - ../build/dist:/opt/matchmedia:z
-    tmpfs:
-      - /opt/matchmedia/data
+      - ../build/dist/.local/bin/matchmedia:/home/matchmedia/.local/bin/matchmedia:z
+      - ../build/dist/.local/share/matchmedia/config/default.yaml:/home/matchmedia/.local/share/matchmedia/config/default.yaml:z
+      - ../build/dist/.local/share/matchmedia/public:/home/matchmedia/.local/share/matchmedia/public:z
+      - ./live-config.yaml:/home/matchmedia/.local/share/matchmedia/config/overlay.yaml:z
+    environment:
+      HOME: /home/matchmedia
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7680/health"]
       interval: 5s

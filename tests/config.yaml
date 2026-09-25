@@ -1,3 +1,7 @@
+http:
+  addr: ":7680"
+browse_roots:
+  - /home/matchmedia
 providers:
   tvmaze:
     base: "http://stub:8080"

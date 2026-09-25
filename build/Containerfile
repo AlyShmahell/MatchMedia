@@ -12,8 +12,8 @@ RUN go mod tidy \
 
 FROM docker.io/library/debian:trixie-slim
 WORKDIR /dist
-COPY --from=build /out/matchmedia /dist/matchmedia
-COPY share/config /dist/config
-COPY gui/index.html gui/style.css gui/app.js /dist/public/
+COPY --from=build /out/matchmedia /dist/.local/bin/matchmedia
+COPY share/config /dist/.local/share/matchmedia/config
+COPY gui/index.html gui/style.css gui/app.js /dist/.local/share/matchmedia/public/
 
-CMD ["sh", "-c", "cp -a /dist/. /out/ && chmod -R a+rX /out && chmod a+x /out/matchmedia"]
+CMD ["sh", "-c", "cp -a /dist/. /out/ && chmod -R a+rX /out && chmod a+x /out/.local/bin/matchmedia"]

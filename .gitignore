@@ -33,6 +33,7 @@ matchmedia/.env
 !/build/dist/.gitkeep
 /build/package/*
 !/build/package/.gitkeep
+/build/cache/
 
 # Editor/IDE
 .idea/

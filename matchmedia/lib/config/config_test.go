@@ -101,7 +101,11 @@ func TestJitterExpBounds(t *testing.T) {
 
 func TestLoadSecretAlias(t *testing.T) {
 	path, data := writeMerged(t, "providers:\n  tmdb: {}\n  tmdb_tv:\n    secret: tmdb\n")
-	if err := os.WriteFile(filepath.Join(data, "secrets"), []byte("tmdb: abc123\n"), 0o644); err != nil {
+	secretDir := filepath.Join(data, "config")
+	if err := os.MkdirAll(secretDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(secretDir, "secrets"), []byte("tmdb: abc123\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load(path)
@@ -186,7 +190,7 @@ func TestPlotStopHelper(t *testing.T) {
 	}
 }
 
-func TestLoadDefaultDataDirBesideBinary(t *testing.T) {
+func TestLoadDefaultXDGDirs(t *testing.T) {
 	path, _ := writeMerged(t, "data_dir: \"\"\n")
 	cfg, err := Load(path)
 	if err != nil {
@@ -196,15 +200,51 @@ func TestLoadDefaultDataDirBesideBinary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(root, "data")
-	if cfg.DataDir != want {
-		t.Fatalf("data_dir=%q want %q", cfg.DataDir, want)
+	wantData := filepath.Join(os.Getenv("XDG_DATA_HOME"), "matchmedia")
+	wantState := filepath.Join(os.Getenv("XDG_STATE_HOME"), "matchmedia")
+	if cfg.DataDir != wantData {
+		t.Fatalf("data_dir=%q want %q", cfg.DataDir, wantData)
 	}
-	if cfg.BrowseRoot != want {
-		t.Fatalf("browse_root=%q want %q", cfg.BrowseRoot, want)
+	if cfg.StateDir != wantState {
+		t.Fatalf("state_dir=%q want %q", cfg.StateDir, wantState)
 	}
 	if cfg.ExeDir != root {
 		t.Fatalf("exe_dir=%q want %q", cfg.ExeDir, root)
+	}
+	for _, root := range cfg.BrowseRoots {
+		if root == os.Getenv("HOME") {
+			t.Fatalf("home is not a browse root: %v", cfg.BrowseRoots)
+		}
+	}
+}
+
+func TestUserMediaDirs(t *testing.T) {
+	isolateXDG(t)
+	home := os.Getenv("HOME")
+	if err := os.MkdirAll(filepath.Join(home, ".config"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "XDG_VIDEOS_DIR=\"$HOME/Clips\"\nXDG_MUSIC_DIR=\"Tunes\"\n"
+	if err := os.WriteFile(filepath.Join(home, ".config", "user-dirs.dirs"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	videos := filepath.Join(home, "Clips")
+	music := filepath.Join(home, "Tunes")
+	if err := os.MkdirAll(videos, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(music, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := userMediaDir("XDG_VIDEOS_DIR", "Videos"); got != videos {
+		t.Fatalf("videos=%q want %q", got, videos)
+	}
+	if got := userMediaDir("XDG_MUSIC_DIR", "Music"); got != music {
+		t.Fatalf("music=%q want %q", got, music)
+	}
+	roots := resolveBrowseRoots([]string{"$XDG_VIDEOS_DIR", "${XDG_MUSIC_DIR}", filepath.Join(home, "missing")})
+	if len(roots) != 2 || roots[0] != videos || roots[1] != music {
+		t.Fatalf("roots=%v", roots)
 	}
 }
 
@@ -308,7 +348,7 @@ providers:
 	if got.Providers["tmdb"].APIKey != "abc123" || got.Providers["omdb"].APIKey != "omdb-key" {
 		t.Fatalf("merge keys tmdb=%q omdb=%q", got.Providers["tmdb"].APIKey, got.Providers["omdb"].APIKey)
 	}
-	info, err := os.Stat(filepath.Join(cfg.DataDir, "secrets"))
+	info, err := os.Stat(filepath.Join(cfg.DataDir, "config", "secrets"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,7 +384,7 @@ func TestSetSecretsUnknownKey(t *testing.T) {
 
 func TestSetSecretsCreatesMissingFile(t *testing.T) {
 	cfg := loadSecretsCfg(t, "providers:\n  omdb:\n    require: api_key\n")
-	if _, err := os.Stat(filepath.Join(cfg.DataDir, "secrets")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(cfg.DataDir, "config", "secrets")); !os.IsNotExist(err) {
 		t.Fatalf("secrets should be missing: %v", err)
 	}
 	if err := SetSecrets(&cfg, map[string]string{"omdb": "k"}); err != nil {
@@ -439,8 +479,27 @@ func shareYAML(t *testing.T) []byte {
 	return b
 }
 
+func isolateXDG(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	home := filepath.Join(dir, "home")
+	for _, p := range []string{
+		home,
+		filepath.Join(dir, "data"),
+		filepath.Join(dir, "state"),
+	} {
+		if err := os.MkdirAll(p, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_DATA_HOME", filepath.Join(dir, "data"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state"))
+}
+
 func writeMerged(t *testing.T, extra string) (path, data string) {
 	t.Helper()
+	isolateXDG(t)
 	dir := t.TempDir()
 	data = filepath.Join(dir, "data")
 	if err := os.MkdirAll(data, 0o755); err != nil {

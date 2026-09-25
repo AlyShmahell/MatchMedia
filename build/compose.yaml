@@ -5,3 +5,19 @@ services:
       dockerfile: ../build/Containerfile
     volumes:
       - ./dist:/out:z
+
+  app:
+    build:
+      context: .
+      dockerfile: Runtime.Containerfile
+    security_opt:
+      - label=disable
+    volumes:
+      - ./cache/xdg:/home/matchmedia:z
+      - /mnt:/mnt
+      - /media:/media
+    network_mode: host
+    environment:
+      HOME: /home/matchmedia
+    working_dir: /home/matchmedia
+    entrypoint: ["/home/matchmedia/.local/bin/matchmedia"]

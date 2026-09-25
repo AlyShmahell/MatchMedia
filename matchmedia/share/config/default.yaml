@@ -1,12 +1,17 @@
 http:
-  addr: ":7680"
+  addr: "127.0.0.1:7680"
   timeout_ms: 60000
   retries: 5
   backoff:
     min_exp: 10
     max_exp: 13
   provider_timeout_ms: 10000
-version: "0.0.8"
+version: "0.0.9"
+browse_roots:
+  - /mnt
+  - /media
+  - $XDG_VIDEOS_DIR
+  - $XDG_MUSIC_DIR
 session:
   ttl_ms: 86400000
   ttl_max_ms: 86400000

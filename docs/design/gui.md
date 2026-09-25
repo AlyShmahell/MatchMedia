@@ -8,7 +8,7 @@ The files live in `matchmedia/gui/` and the dist builder copies them to `{exeDir
 
 ## Folder picker
 
-The browser cannot see the host filesystem. The File System Access API and `webkitdirectory` upload host files; they do not pick a server path. The admin picker therefore calls `GET /v1/fs?path=` and stays inside `browse_root` from YAML.
+The browser cannot see the host filesystem. The File System Access API and `webkitdirectory` upload host files; they do not pick a server path. The admin picker therefore calls `GET /v1/fs?path=` and stays inside `browse_roots` from YAML.
 
 ## Secrets
 

@@ -1,6 +1,10 @@
 package fs
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestWithinFilesystemRoot(t *testing.T) {
 	if !Within("/", "/mnt/microsd/media/anime") {
@@ -26,5 +30,30 @@ func TestWithinPrefix(t *testing.T) {
 	}
 	if Within("/media", "/media2") {
 		t.Fatal("prefix-not-separator")
+	}
+}
+
+func TestListRoots(t *testing.T) {
+	a := t.TempDir()
+	b := t.TempDir()
+	if err := os.Mkdir(filepath.Join(a, "shows"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	top, err := List([]string{a, b}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(top.Entries) != 2 || top.Parent != "" {
+		t.Fatalf("top=%+v", top)
+	}
+	got, err := List([]string{a, b}, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Root != a || got.Parent != "." || len(got.Entries) != 1 {
+		t.Fatalf("a=%+v", got)
+	}
+	if _, err = List([]string{a, b}, t.TempDir()); err == nil {
+		t.Fatal("expected path outside roots")
 	}
 }

@@ -24,15 +24,15 @@ import (
 )
 
 func main() {
-	exeDir, err := config.ExeDir()
-	if err != nil {
-		log.Fatal(err)
-	}
 	configPath := flag.String("config", "", "path to default.yaml")
 	flag.Parse()
 	path := strings.TrimSpace(*configPath)
+	var err error
 	if path == "" {
-		path = filepath.Join(exeDir, "config", "default.yaml")
+		path, err = config.DefaultConfigPath()
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 	cfg, err := config.Load(path)
 	if err != nil {
@@ -41,10 +41,10 @@ func main() {
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		log.Fatal(err)
 	}
-	if err := os.MkdirAll(cfg.BrowseRoot, 0o755); err != nil {
+	if err := os.MkdirAll(cfg.StateDir, 0o755); err != nil {
 		log.Fatal(err)
 	}
-	store := jobs.New(cfg.DataDir)
+	store := jobs.New(cfg.StateDir)
 	worker := jobs.NewWorker(&cfg, store)
 	scans := newScanRun()
 	worker.Kick()
@@ -57,7 +57,7 @@ func main() {
 		})
 	})
 	mux.HandleFunc("GET /v1/fs", func(w http.ResponseWriter, r *http.Request) {
-		listing, err := matchfs.List(cfg.BrowseRoot, r.URL.Query().Get("path"))
+		listing, err := matchfs.List(cfg.BrowseRoots, r.URL.Query().Get("path"))
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
@@ -174,12 +174,12 @@ func main() {
 		}
 		skip := skipEpisodePosters(r) || body.SkipEpisodePosters
 		worker.SetSkipEpisodePosters(skip)
-		target, err := scan.ResolveTarget(cfg.BrowseRoot, body.Path)
+		target, root, err := scan.ResolveTarget(cfg.BrowseRoots, body.Path)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
-		children, err := scan.Children(cfg.BrowseRoot, target, cfg.SampleVideos())
+		children, err := scan.Children(root, target, cfg.SampleVideos())
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
@@ -199,7 +199,7 @@ func main() {
 		}
 		ctx := scans.start(sess, files, len(children))
 		writeJSON(w, http.StatusAccepted, map[string]any{"session": sess, "files": files, "mode": mode})
-		go enqueueScan(ctx, cfg, store, worker, scans, sess, children, mode, scan.RequireEpisodeNFO(mode, body.RequireEpisodeNFO))
+		go enqueueScan(ctx, cfg, store, worker, scans, sess, children, root, mode, scan.RequireEpisodeNFO(mode, body.RequireEpisodeNFO))
 	})
 	mux.HandleFunc("POST /v1/ingest", func(w http.ResponseWriter, r *http.Request) {
 		name, ct, body, err := ingestBody(r)
@@ -458,7 +458,10 @@ func main() {
 		http.ServeFile(w, r, path)
 	})
 
-	public := filepath.Join(exeDir, "public")
+	public, err := config.PublicDir()
+	if err != nil {
+		log.Fatal(err)
+	}
 	if st, err := os.Stat(public); err != nil || !st.IsDir() {
 		log.Fatalf("public dir missing: %s", public)
 	}
@@ -628,7 +631,7 @@ func filterWaits(all []match.Wait, list []match.Job) []match.Wait {
 	return out
 }
 
-func enqueueScan(ctx context.Context, cfg config.Config, store *jobs.Store, worker *jobs.Worker, scans *scanRun, session string, children []scan.Child, mode string, requireEpisodeNFO bool) {
+func enqueueScan(ctx context.Context, cfg config.Config, store *jobs.Store, worker *jobs.Worker, scans *scanRun, session string, children []scan.Child, library, mode string, requireEpisodeNFO bool) {
 	defer scans.done()
 	defer func() {
 		if ctx.Err() != nil {
@@ -641,7 +644,7 @@ func enqueueScan(ctx context.Context, cfg config.Config, store *jobs.Store, work
 		if ctx.Err() != nil {
 			return
 		}
-		created := jobsFromShows(match.Group(cfg, cfg.BrowseRoot, child.Path), cfg.BrowseRoot, child)
+		created := jobsFromShows(match.Group(cfg, library, child.Path), library, child)
 		if mode == scan.ModeChanges {
 			created = match.ApplyChanges(cfg, created, requireEpisodeNFO)
 		}

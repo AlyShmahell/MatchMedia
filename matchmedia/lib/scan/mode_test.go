@@ -42,23 +42,33 @@ func TestRequireEpisodeNFO(t *testing.T) {
 
 func TestResolveTarget(t *testing.T) {
 	root := t.TempDir()
-	got, err := ResolveTarget(root, "")
-	if err != nil || got != filepath.Clean(root) {
-		t.Fatalf("empty path: %q %v", got, err)
+	other := t.TempDir()
+	roots := []string{root, other}
+	got, lib, err := ResolveTarget(roots, "")
+	if err != nil || got != filepath.Clean(root) || lib != filepath.Clean(root) {
+		t.Fatalf("empty path: %q %q %v", got, lib, err)
 	}
 	inside := filepath.Join(root, "shows")
 	if err := os.Mkdir(inside, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	got, err = ResolveTarget(root, inside)
-	if err != nil || got != inside {
-		t.Fatalf("inside: %q %v", got, err)
+	got, lib, err = ResolveTarget(roots, inside)
+	if err != nil || got != inside || lib != filepath.Clean(root) {
+		t.Fatalf("inside: %q %q %v", got, lib, err)
 	}
-	if _, err = ResolveTarget(root, "shows"); err == nil {
+	if _, _, err = ResolveTarget(roots, "shows"); err == nil {
 		t.Fatal("expected relative path error")
 	}
 	outside := filepath.Join(root, "..", "outside")
-	if _, err = ResolveTarget(root, outside); err == nil {
-		t.Fatal("expected path outside browse_root")
+	if _, _, err = ResolveTarget(roots, outside); err == nil {
+		t.Fatal("expected path outside browse roots")
+	}
+	inOther := filepath.Join(other, "movies")
+	if err := os.Mkdir(inOther, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, lib, err = ResolveTarget(roots, inOther)
+	if err != nil || got != inOther || lib != filepath.Clean(other) {
+		t.Fatalf("other root: %q %q %v", got, lib, err)
 	}
 }
