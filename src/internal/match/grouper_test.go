@@ -4,10 +4,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/alyshmahell/matchmedia/lib/config"
+	"github.com/alyshmahell/matchmedia/src/internal/config"
 )
 
 func writeTree(t *testing.T, root string, files []string) {
@@ -350,16 +351,222 @@ func TestGroupKindsExtrasStayOnParent(t *testing.T) {
 		t.Fatalf("missing spin-off: %v", titlesOf(got))
 	}
 	k := fileBySuffix(t, parent.Files, "/k.mkv")
-	if k.Season != "0" {
+	if k.Season != "0" || k.Episode == "" {
 		t.Fatalf("kind file=%+v", k)
 	}
-	x := fileBySuffix(t, parent.Files, "/x.mkv")
-	if x.Season != "0" {
-		t.Fatalf("extras file=%+v", x)
-	}
 	for _, f := range parent.Files {
+		if strings.HasSuffix(f.Path, "/x.mkv") {
+			t.Fatalf("extras file kept: %+v", parent.Files)
+		}
 		if strings.Contains(f.Path, "Spin Off") {
 			t.Fatalf("parent leaked spin-off: %+v", parent.Files)
+		}
+	}
+	if parent.Kind != "show" || parent.Role != "title" {
+		t.Fatalf("parent kind=%s role=%s", parent.Kind, parent.Role)
+	}
+}
+
+func TestGroupShowNumbersLooseFile(t *testing.T) {
+	lib := t.TempDir()
+	child := filepath.Join(lib, "Show")
+	writeTree(t, lib, []string{"Show/Season 01/plain.mkv"})
+	got := Group(testCfg(t), lib, child)
+	if len(got) != 1 || got[0].Kind != "show" || len(got[0].Files) != 1 {
+		t.Fatalf("got=%+v", got)
+	}
+	f := got[0].Files[0]
+	if f.Season != "1" || f.Episode == "" {
+		t.Fatalf("file=%+v", f)
+	}
+}
+
+func TestGroupOmitsTrailerFilename(t *testing.T) {
+	lib := t.TempDir()
+	child := filepath.Join(lib, "Show")
+	writeTree(t, lib, []string{
+		"Show/Season 01/Show S01E01.mkv",
+		"Show/Season 01/Show - trailer.mkv",
+	})
+	got := Group(testCfg(t), lib, child)
+	if len(got) != 1 || len(got[0].Files) != 1 {
+		t.Fatalf("got=%+v", got)
+	}
+	if !strings.HasSuffix(got[0].Files[0].Path, "S01E01.mkv") {
+		t.Fatalf("file=%+v", got[0].Files[0])
+	}
+}
+
+func TestGroupFlatMoviesAreFileJobs(t *testing.T) {
+	lib := t.TempDir()
+	child := filepath.Join(lib, "Movies")
+	writeTree(t, lib, []string{"Movies/Alpha.mkv", "Movies/Beta.mkv"})
+	got := Group(testCfg(t), lib, child)
+	if len(got) != 2 {
+		t.Fatalf("got=%v", titlesOf(got))
+	}
+	for _, g := range got {
+		if g.Kind != "movie" || g.Role != "title" || len(g.Files) != 1 {
+			t.Fatalf("job=%+v", g)
+		}
+		if !strings.HasSuffix(g.Path, ".mkv") {
+			t.Fatalf("path=%s", g.Path)
+		}
+		if g.Files[0].Season != "" || g.Files[0].Episode != "" {
+			t.Fatalf("file=%+v", g.Files[0])
+		}
+	}
+}
+
+func TestGroupVersionFolderOneMovie(t *testing.T) {
+	lib := t.TempDir()
+	child := filepath.Join(lib, "Film (2016)")
+	writeTree(t, lib, []string{
+		"Film (2016)/Film (2016).mkv",
+		"Film (2016)/Film (2016).1080p.mkv",
+	})
+	got := Group(testCfg(t), lib, child)
+	if len(got) != 1 || got[0].Kind != "movie" || len(got[0].Files) != 2 {
+		t.Fatalf("got=%+v", got)
+	}
+}
+
+func TestGroupExtrasWordInTitleKept(t *testing.T) {
+	lib := t.TempDir()
+	show := filepath.Join(lib, "Anime", "Extras Sibling Show")
+	writeTree(t, lib, []string{
+		"Anime/Extras Sibling Show/Extras Sibling Show - 01.mkv",
+		"Anime/Extras Sibling Show/Extras Sibling Show - 02.mkv",
+		"Anime/Extras Sibling Show/Extras/Extras Sibling Show - NCOP1.mkv",
+	})
+	cfg := testCfg(t)
+	for _, child := range []string{filepath.Join(lib, "Anime"), show} {
+		got := Group(cfg, lib, child)
+		var job *Grouped
+		for i := range got {
+			if got[i].Title == "Extras Sibling Show" {
+				job = &got[i]
+			}
+		}
+		if job == nil || job.Kind != "show" || len(job.Files) != 2 {
+			t.Fatalf("child %s got=%+v", child, got)
+		}
+		if job.Files[0].Episode != "1" || job.Files[1].Episode != "2" {
+			t.Fatalf("files=%+v", job.Files)
+		}
+	}
+}
+
+func TestGroupSeasonPackShow(t *testing.T) {
+	lib := t.TempDir()
+	show := filepath.Join(lib, "Anime", "Season Pack Show")
+	season := filepath.Join(show, "Season 2")
+	writeTree(t, lib, []string{
+		"Anime/Season Pack Show/Season 2/[Grp]Season Pack Show Season 2_-_01_(Dual).mp4",
+		"Anime/Season Pack Show/Season 2/[Grp]Season Pack Show Season 2_-_02_(Dual).mp4",
+		"Anime/Season Pack Show/Season 2/[Grp]Season Pack Show Season 2_-_03_(Dual).mp4",
+	})
+	cfg := testCfg(t)
+	for _, child := range []string{filepath.Join(lib, "Anime"), show, season} {
+		got := Group(cfg, lib, child)
+		if len(got) != 1 || got[0].Title != "Season Pack Show" || got[0].Kind != "show" {
+			t.Fatalf("child %s got=%+v", child, got)
+		}
+		if !strings.HasSuffix(filepath.ToSlash(got[0].Path), "Season Pack Show") {
+			t.Fatalf("path=%s", got[0].Path)
+		}
+		if len(got[0].Files) != 3 {
+			t.Fatalf("files=%+v", got[0].Files)
+		}
+		for i, f := range got[0].Files {
+			if f.Season != "2" || f.Episode != strconv.Itoa(i+1) {
+				t.Fatalf("file=%+v", f)
+			}
+		}
+	}
+}
+
+func TestGroupBareIndexDuplicateOmitted(t *testing.T) {
+	lib := t.TempDir()
+	child := filepath.Join(lib, "Anime", "Dual Show")
+	writeTree(t, lib, []string{
+		"Anime/Dual Show/Season 1/[Alpha] Dual Show - S01E01 v2.mp4",
+		"Anime/Dual Show/Season 1/[Alpha] Dual Show - S01E02 v2.mp4",
+		"Anime/Dual Show/Season 1/[Beta] Dual Show - 01.mp4",
+		"Anime/Dual Show/Season 1/[Beta] Dual Show - Opening.mp4",
+		"Anime/Dual Show/Season 2/S02E01-TAG [AAAAAAAA].mp4",
+		"Anime/Dual Show/Season 2/S02E02-TAG [BBBBBBBB].mp4",
+	})
+	got := Group(testCfg(t), lib, child)
+	if len(got) != 1 || got[0].Kind != "show" || len(got[0].Files) != 4 {
+		t.Fatalf("got=%+v", got)
+	}
+	for _, f := range got[0].Files {
+		if strings.Contains(f.Path, "Opening") || strings.Contains(f.Path, "Beta") {
+			t.Fatalf("kept %s", f.Path)
+		}
+	}
+}
+
+func TestGroupFlatDashPackIsShow(t *testing.T) {
+	lib := t.TempDir()
+	show := filepath.Join(lib, "Anime", "Flat Dash Show")
+	writeTree(t, lib, []string{
+		"Anime/Flat Dash Show/[Grp] Flat Dash Show - 01.mkv",
+		"Anime/Flat Dash Show/[Grp] Flat Dash Show - 02.mkv",
+		"Anime/Flat Dash Show/[Grp] Flat Dash Show - 03.mkv",
+	})
+	cfg := testCfg(t)
+	for _, child := range []string{filepath.Join(lib, "Anime"), show} {
+		got := Group(cfg, lib, child)
+		if len(got) != 1 || got[0].Kind != "show" || got[0].Title != "Flat Dash Show" || len(got[0].Files) != 3 {
+			t.Fatalf("child %s got=%+v", child, got)
+		}
+		for i, f := range got[0].Files {
+			if f.Season != "1" || f.Episode != strconv.Itoa(i+1) {
+				t.Fatalf("file=%+v", f)
+			}
+		}
+	}
+}
+
+func TestGroupCourFoldersOneShow(t *testing.T) {
+	lib := t.TempDir()
+	anime := filepath.Join(lib, "Anime")
+	show := filepath.Join(anime, "Complex Show")
+	writeTree(t, lib, []string{
+		"Anime/Complex Show/Cour One/Complex Show S04E01.mkv",
+		"Anime/Complex Show/Cour Two/Complex Show - 01.mkv",
+		"Anime/Complex Show/Cour Three/Complex Show - 01.mkv",
+		"Anime/Complex Show/OVA/Complex Show OVA - 01.mkv",
+	})
+	cfg := testCfg(t)
+	for _, child := range []string{anime, show} {
+		got := Group(cfg, lib, child)
+		if len(got) != 1 || got[0].Kind != "show" || got[0].Title != "Complex Show" || len(got[0].Files) != 4 {
+			t.Fatalf("child %s got=%+v", child, got)
+		}
+		if !strings.HasSuffix(filepath.ToSlash(got[0].Path), "Complex Show") {
+			t.Fatalf("path=%s", got[0].Path)
+		}
+		one := fileBySuffix(t, got[0].Files, "Cour One/Complex Show S04E01.mkv")
+		two := fileBySuffix(t, got[0].Files, "Cour Two/Complex Show - 01.mkv")
+		three := fileBySuffix(t, got[0].Files, "Cour Three/Complex Show - 01.mkv")
+		ova := fileBySuffix(t, got[0].Files, "OVA/Complex Show OVA - 01.mkv")
+		if one.Season == "4" || two.Season == "4" || three.Season == "4" {
+			t.Fatalf("filename season leaked: %+v", got[0].Files)
+		}
+		if one.Episode != "1" || two.Episode != "1" || three.Episode != "1" || ova.Episode != "1" {
+			t.Fatalf("episodes=%+v", got[0].Files)
+		}
+		if one.Season != "1" || three.Season != "2" || two.Season != "3" || ova.Season != "0" {
+			t.Fatalf("seasons one=%s three=%s two=%s ova=%s", one.Season, three.Season, two.Season, ova.Season)
+		}
+		if child == show && !OneShowAt(lib, show, got) {
+			t.Fatalf("show scan is not one title at %s (%s)", show, got[0].Path)
+		}
+		if child == anime && OneShowAt(lib, anime, got) {
+			t.Fatalf("library scan collapsed to %s", got[0].Path)
 		}
 	}
 }

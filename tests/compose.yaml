@@ -43,9 +43,9 @@ services:
   unit:
     image: docker.io/library/golang:1.26-bookworm
     volumes:
-      - ../matchmedia:/src:z
+      - ../src:/src:z
     working_dir: /src
-    command: ["go", "test", "-buildvcs=false", "./lib/match", "./lib/scan", "./lib/config", "./lib/jobs", "./lib/ingest", "./lib/library"]
+    command: ["go", "test", "-buildvcs=false", "./internal/match", "./internal/scan", "./internal/config", "./internal/jobs", "./internal/ingest", "./internal/library"]
 
   tester:
     build:

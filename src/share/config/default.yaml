@@ -6,7 +6,7 @@ http:
     min_exp: 10
     max_exp: 13
   provider_timeout_ms: 10000
-version: "0.0.9"
+version: "0.1.0"
 browse_roots:
   - /mnt
   - /media
@@ -55,6 +55,11 @@ group:
     - nc
     - ncop
     - nced
+    - trailer
+    - opening
+    - op
+    - ed
+    - pv
   release:
     - 1080p
     - 720p

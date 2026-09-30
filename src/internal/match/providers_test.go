@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alyshmahell/matchmedia/lib/config"
+	"github.com/alyshmahell/matchmedia/src/internal/config"
 )
 
 func TestSearchProviderRetries504(t *testing.T) {

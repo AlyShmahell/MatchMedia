@@ -3,7 +3,7 @@ package match
 import (
 	"testing"
 
-	"github.com/alyshmahell/matchmedia/lib/config"
+	"github.com/alyshmahell/matchmedia/src/internal/config"
 )
 
 var testPlotStop = []string{

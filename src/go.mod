@@ -1,4 +1,4 @@
-module github.com/alyshmahell/matchmedia
+module github.com/alyshmahell/matchmedia/src
 
 go 1.26
 

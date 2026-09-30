@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alyshmahell/matchmedia/lib/config"
-	"github.com/alyshmahell/matchmedia/lib/match"
+	"github.com/alyshmahell/matchmedia/src/internal/config"
+	"github.com/alyshmahell/matchmedia/src/internal/match"
 )
 
 func TestWorkerRunsPendingJobsInParallel(t *testing.T) {

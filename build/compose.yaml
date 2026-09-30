@@ -1,7 +1,7 @@
 services:
   dist:
     build:
-      context: ../matchmedia
+      context: ../src
       dockerfile: ../build/Containerfile
     volumes:
       - ./dist:/out:z

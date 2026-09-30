@@ -6,11 +6,11 @@ MatchMedia ingests title rows or scans a library path, searches metadata APIs de
 
 | Path | Role |
 |------|------|
-| `matchmedia/app` | HTTP server (`-config`) |
-| `matchmedia/lib/config` | YAML loader (`-config` path, else `$XDG_DATA_HOME/matchmedia/config/default.yaml`) |
-| `matchmedia/share/config` | Seed `default.yaml` copied into `build/dist/.local/share/matchmedia/config`. Grouping word lists and match/http numbers come only from YAML; a missing required key fails start. |
-| `matchmedia/lib` | fs, ingest, jobs, library (NFO catalog), match, scan |
-| `matchmedia/gui` | admin console source; copied to `build/dist/.local/share/matchmedia/public` |
+| `src/cmd` | HTTP server (`-config`) |
+| `src/internal/config` | YAML loader (`-config` path, else `$XDG_DATA_HOME/matchmedia/config/default.yaml`) |
+| `src/share/config` | Seed `default.yaml` copied into `build/dist/.local/share/matchmedia/config`. Grouping word lists and match/http numbers come only from YAML; a missing required key fails start. |
+| `src/internal` | fs, ingest, jobs, library (NFO catalog), match, scan |
+| `src/webui` | admin console source; copied to `build/dist/.local/share/matchmedia/public` |
 | `build/` | Podman dist builder (Containerfile, compose, `run`) |
 | `$HOME/.local/bin/matchmedia` | binary |
 | `$XDG_DATA_HOME/matchmedia` | shipped `config/default.yaml` and `public/`, user `config/overlay.yaml` and `config/secrets`, catalog under `catalog/` (default `$HOME/.local/share/matchmedia`) |

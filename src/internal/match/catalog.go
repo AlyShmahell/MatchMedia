@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/alyshmahell/matchmedia/lib/config"
+	"github.com/alyshmahell/matchmedia/src/internal/config"
 )
 
 func fetchCatalog(ctx context.Context, cfg config.Config, httpc *httpClient, job Job, cand Candidate) ([]CatalogSeason, string) {

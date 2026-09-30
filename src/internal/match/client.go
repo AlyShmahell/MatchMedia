@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alyshmahell/matchmedia/lib/config"
+	"github.com/alyshmahell/matchmedia/src/internal/config"
 )
 
 type httpClient struct {

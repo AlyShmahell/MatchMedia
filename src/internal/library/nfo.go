@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/alyshmahell/matchmedia/lib/match"
+	"github.com/alyshmahell/matchmedia/src/internal/match"
 )
 
 const xmlHeader = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` + "\n"

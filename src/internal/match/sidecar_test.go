@@ -112,6 +112,8 @@ func absJobs(lib string, shows []Grouped) []Job {
 			Title:  s.Title,
 			Year:   s.Year,
 			Parent: s.Parent,
+			Kind:   s.Kind,
+			Role:   s.Role,
 			Status: "pending",
 			Path:   filepath.Join(lib, filepath.FromSlash(s.Path)),
 		}
@@ -406,14 +408,14 @@ func TestChangesNoEpisodeThumbsMatched(t *testing.T) {
 	requireMatchedSidecar(t, jobByTitle(t, jobs, "Darling"), "", "")
 }
 
-func TestChangesSeasonPosterFallbackMatched(t *testing.T) {
+func TestChangesSeasonPosterIsNotTitlePoster(t *testing.T) {
 	lib := t.TempDir()
 	writeXML(t, filepath.Join(lib, "Show", "tvshow.nfo"), "tvshow", "Show", "2020", "", "")
 	writePosterAt(t, filepath.Join(lib, "Show", "Season 01", "poster.jpg"))
 	writeXML(t, filepath.Join(lib, "Show", "Season 01", "Show S01E01.nfo"), "episodedetails", "E1", "2020", "", "")
 	writeTree(t, lib, []string{"Show/Season 01/Show S01E01.mkv"})
 	jobs := scanLib(t, lib, true)
-	requireMatchedSidecar(t, jobByTitle(t, jobs, "Show"), "", "")
+	requirePending(t, jobByTitle(t, jobs, "Show"))
 }
 
 func TestChangesKodiEpisodeNFOMissingPending(t *testing.T) {
@@ -479,6 +481,41 @@ func TestChangesShowDropsGoneEpisode(t *testing.T) {
 		}
 	}
 	requireMatchedSidecar(t, job, "tmdb-tv", "1")
+}
+
+func TestNFOIncompleteUnmatched(t *testing.T) {
+	lib := t.TempDir()
+	writeTree(t, lib, []string{"Show/Season 01/Show S01E01.mkv"})
+	cfg := testCfg(t)
+	jobs := absJobs(lib, Group(cfg, lib, filepath.Join(lib, "Show")))
+	jobs = ApplyNFO(cfg, jobs, false)
+	if len(jobs) != 1 || jobs[0].Status != "unmatched" {
+		t.Fatalf("jobs=%+v", jobs)
+	}
+	if len(jobs[0].Files) == 0 || jobs[0].Kind != "show" {
+		t.Fatalf("job=%+v", jobs[0])
+	}
+}
+
+func TestSharedMovieNFONotUsedForFileJob(t *testing.T) {
+	lib := t.TempDir()
+	writeTree(t, lib, []string{"Movies/A.mkv", "Movies/B.mkv"})
+	writeXML(t, filepath.Join(lib, "Movies", "movie.nfo"), "movie", "Shared", "2000", "tmdb-movie", "9")
+	writePosterAt(t, filepath.Join(lib, "Movies", "poster.jpg"))
+	cfg := testCfg(t)
+	jobs := absJobs(lib, Group(cfg, lib, filepath.Join(lib, "Movies")))
+	jobs = ApplyChanges(cfg, jobs, false)
+	if len(jobs) != 2 {
+		t.Fatalf("jobs=%v", titlesOfJobs(jobs))
+	}
+	for _, job := range jobs {
+		if job.Kind != "movie" || job.Status == "matched" {
+			t.Fatalf("job=%+v", job)
+		}
+		if !strings.HasSuffix(job.Path, ".mkv") {
+			t.Fatalf("path=%s", job.Path)
+		}
+	}
 }
 
 func titlesOfJobs(jobs []Job) []string {

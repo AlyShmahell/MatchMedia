@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/alyshmahell/matchmedia/lib/config"
+	"github.com/alyshmahell/matchmedia/src/internal/config"
 )
 
 var (
@@ -16,6 +16,7 @@ var (
 	bareYearRe    = regexp.MustCompile(`\s+(\d{4})\s*$`)
 	episodeRe     = regexp.MustCompile(`(?i)s\d{1,2}e\d{1,3}|\bepisode\s*\d+`)
 	seasonHeadRe  = regexp.MustCompile(`(?i)^season\s*\d+`)
+	seasonOnlyRe  = regexp.MustCompile(`(?i)^season\s*\d+$`)
 	sxxRe         = regexp.MustCompile(`(?i)^s\d{1,2}$`)
 	arcTailRe     = regexp.MustCompile(`(?i)\barc\b`)
 	junkTitleRe   = regexp.MustCompile(`(?i)\b(recap|offline|omake|preview|pv)\b`)
@@ -42,15 +43,15 @@ var (
 	shortQualRe   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.+-]*$`)
 	yearOnlyRe    = regexp.MustCompile(`^\d{4}$`)
 	epAbsorbRe    = regexp.MustCompile(`^(?:(ii|iii|iv|v)\s+)?(\d{1,3})(?:\s+(.*))?$`)
-	qualSplitRe  = regexp.MustCompile(`[\s/,+]+`)
-	slashSpaceRe = regexp.MustCompile(`[\s/]+`)
+	qualSplitRe   = regexp.MustCompile(`[\s/,+]+`)
+	slashSpaceRe  = regexp.MustCompile(`[\s/]+`)
 )
 
 var tails = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\bS\d{1,2}E\d{1,3}\b.*$`),
-	regexp.MustCompile(`(?i)\bSeason(?:\s+\d+)?\b.*$`),
-	regexp.MustCompile(`(?i)\bEpisode(?:\s+\d+)?\b.*$`),
-	regexp.MustCompile(`(?i)\bS\d{1,2}\b.*$`),
+	regexp.MustCompile(`(?i)(?:^|\s)season(?:\s+\d+)?\s*$`),
+	regexp.MustCompile(`(?i)(?:^|\s)episode(?:\s+\d+)?\s*$`),
+	regexp.MustCompile(`(?i)(?:^|\s)s\d{1,2}\s*$`),
 }
 
 var parenRe = regexp.MustCompile(`\(([^)]*)\)`)
@@ -60,8 +61,8 @@ var qualityExtra = map[string]struct{}{
 }
 
 type groupedRow struct {
-	title, year, path, parent string
-	files                     []JobFile
+	title, year, path, parent, kind, role string
+	files                                 []JobFile
 }
 
 type preprocessor struct {
@@ -94,10 +95,17 @@ func Group(cfg config.Config, root, child string) []Grouped {
 		return nil
 	}
 	g := newGrouper(cfg, root)
-	rows := g.attachFiles(g.group(child))
+	rows := g.finish(g.attachFiles(g.group(child)))
 	out := make([]Grouped, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, Grouped{Cleaned: Cleaned{Title: r.title, Year: r.year}, Path: r.path, Parent: r.parent, Files: r.files})
+		out = append(out, Grouped{
+			Cleaned: Cleaned{Title: r.title, Year: r.year},
+			Path:    r.path,
+			Parent:  r.parent,
+			Kind:    r.kind,
+			Role:    r.role,
+			Files:   r.files,
+		})
 	}
 	return out
 }
@@ -117,8 +125,55 @@ func newGrouper(cfg config.Config, library string) *grouper {
 
 func (p *preprocessor) extrasName(name string) bool {
 	n := strings.ToLower(strings.TrimSpace(strings.TrimRight(name, "/")))
-	_, ok := p.extras[n]
-	return ok
+	return p.extrasToken(n)
+}
+
+func (p *preprocessor) extrasToken(t string) bool {
+	t = strings.ToLower(strings.TrimSpace(t))
+	if t == "" {
+		return false
+	}
+	if _, ok := p.extras[t]; ok {
+		return true
+	}
+	if strings.HasSuffix(t, "s") {
+		if _, ok := p.extras[strings.TrimSuffix(t, "s")]; ok {
+			return true
+		}
+	} else if _, ok := p.extras[t+"s"]; ok {
+		return true
+	}
+	return setToken(p.extras, t)
+}
+
+func (p *preprocessor) extrasFile(name, title string) bool {
+	titleToks := nameTokens(title)
+	for _, t := range nameTokensList(name) {
+		if !p.extrasToken(t) {
+			continue
+		}
+		if _, ok := titleToks[t]; ok {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func nameTokens(name string) map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, t := range nameTokensList(name) {
+		out[t] = struct{}{}
+	}
+	return out
+}
+
+func nameTokensList(name string) []string {
+	base := strings.TrimSuffix(strings.ToLower(name), strings.ToLower(filepath.Ext(name)))
+	base = strings.NewReplacer("_", " ", ".", " ").Replace(base)
+	return strings.FieldsFunc(base, func(r rune) bool {
+		return r == ' ' || r == '-' || r == '–' || r == '—'
+	})
 }
 
 func setToken(set map[string]struct{}, t string) bool {
@@ -170,9 +225,6 @@ func (p *preprocessor) segment(raw string, stripExt bool) string {
 	name = dashRe.ReplaceAllString(name, " ")
 	var tokens []string
 	for _, t := range strings.Fields(name) {
-		if setToken(p.extras, t) {
-			continue
-		}
 		parts := dashSplitRe.Split(t, -1)
 		var kept []string
 		for _, part := range parts {
@@ -965,6 +1017,7 @@ func uniqueTitles(rows []groupedRow) []groupedRow {
 }
 
 func (g *grouper) group(child string) []groupedRow {
+	child = g.liftSeasonDir(child)
 	root := g.pre.segment(filepath.Base(child), true)
 	if root == "" {
 		root = filepath.Base(child)
@@ -985,6 +1038,43 @@ func (g *grouper) group(child string) []groupedRow {
 		rows[i].parent = parent
 	}
 	return rows
+}
+
+func (g *grouper) liftSeasonDir(child string) string {
+	if !seasonOnlyName(filepath.Base(child)) {
+		return child
+	}
+	parent := filepath.Dir(child)
+	if parent == "" || parent == "." || parent == child {
+		return child
+	}
+	if filepath.Clean(parent) == string(os.PathSeparator) {
+		return child
+	}
+	return parent
+}
+
+func seasonOnlyName(name string) bool {
+	name = strings.TrimSpace(name)
+	if seasonOnlyRe.MatchString(name) || sxxRe.MatchString(name) {
+		return true
+	}
+	return false
+}
+
+func OneShowAt(library, target string, shows []Grouped) bool {
+	if len(shows) != 1 {
+		return false
+	}
+	path := strings.TrimSpace(shows[0].Path)
+	if path == "" {
+		return false
+	}
+	abs := path
+	if !filepath.IsAbs(path) {
+		abs = filepath.Join(library, filepath.FromSlash(path))
+	}
+	return filepath.Clean(abs) == filepath.Clean(target)
 }
 
 func (g *grouper) looseFile(path, root string, years map[string]bool, pathRel string) []groupedRow {
@@ -1035,6 +1125,10 @@ func (g *grouper) node(path, root string, years map[string]bool, pathRel string)
 			}
 			continue
 		case "named":
+			if g.partOfShow(e.abs, root) {
+				series = true
+				continue
+			}
 			out = append(out, g.namedDir(e.abs, e.name, root, years, pathRel+"/"+e.name)...)
 			continue
 		}
@@ -1047,6 +1141,10 @@ func (g *grouper) node(path, root string, years map[string]bool, pathRel string)
 		} else {
 			looseOther = append(looseOther, [2]string{e.abs, cleaned})
 		}
+	}
+	if !series && len(out) == 0 && dashPackCount(entries) >= 2 {
+		series = true
+		looseOther = nil
 	}
 	if len(looseOther) > 0 {
 		names := make([]string, len(looseOther))
@@ -1079,6 +1177,37 @@ func (g *grouper) node(path, root string, years map[string]bool, pathRel string)
 		out = append([]groupedRow{{title: title, year: year, path: pathRel}}, out...)
 	}
 	return out
+}
+
+func (g *grouper) partOfShow(absP, root string) bool {
+	n := 0
+	for _, p := range g.videosFor(absP) {
+		if !g.keepVideo(absP, p) {
+			continue
+		}
+		n++
+		name := filepath.Base(p)
+		cleaned := g.pre.segment(name, true)
+		if !g.cls.namedForRoot(cleaned, name, root) {
+			return false
+		}
+	}
+	return n > 0
+}
+
+func (c *classifier) namedForRoot(cleaned, raw, root string) bool {
+	if c.isAlias(cleaned, root) || c.isRootPlusYear(cleaned, root) {
+		return true
+	}
+	nr := titleNorm(root)
+	if nr == "" {
+		return false
+	}
+	nc := titleNorm(cleaned)
+	if nc == "" {
+		nc = titleNorm(strings.TrimSuffix(raw, filepath.Ext(raw)))
+	}
+	return strings.Contains(nc, nr)
 }
 
 func (g *grouper) hasKeptVideos(path string) bool {

@@ -7,12 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/alyshmahell/matchmedia/lib/config"
+	"github.com/alyshmahell/matchmedia/src/internal/config"
 )
-
-var genericParents = map[string]struct{}{
-	"movies": {}, "movie": {}, "films": {}, "film": {}, "tv": {}, "anime": {}, "media": {},
-}
 
 var posterExt = []string{".jpg", ".png", ".jpeg"}
 
@@ -30,44 +26,62 @@ func ApplyChanges(cfg config.Config, jobs []Job, requireEpisodeNFO bool) []Job {
 	return out
 }
 
-func SidecarComplete(cfg config.Config, job Job, requireEpisodeNFO bool) bool {
+func ApplyNFO(cfg config.Config, jobs []Job, requireEpisodeNFO bool) []Job {
+	out := make([]Job, 0, len(jobs))
+	for _, job := range jobs {
+		if len(job.Files) == 0 {
+			continue
+		}
+		job = fillSidecar(cfg, job)
+		if SidecarComplete(cfg, job, requireEpisodeNFO) {
+			job = JobFromSidecar(cfg, job)
+		} else {
+			job.Status = "unmatched"
+			job.Match = nil
+			job.Candidates = nil
+			job.Ranker = ""
+		}
+		out = append(out, job)
+	}
+	return out
+}
+
+func SidecarComplete(_ config.Config, job Job, requireEpisodeNFO bool) bool {
 	if len(job.Files) == 0 {
 		return false
 	}
-	if showJob(job) {
-		dir := jobDir(job)
-		if !fileExists(filepath.Join(dir, "tvshow.nfo")) || findShowPoster(dir) == "" {
-			return false
-		}
-		if requireEpisodeNFO {
-			for _, f := range job.Files {
-				if !episodeNFOOK(f.Path) {
-					return false
-				}
-			}
-		}
-		return true
+	nfo, poster, ok := titleSidecar(job)
+	if !ok || poster == "" {
+		return false
 	}
-	for _, f := range job.Files {
-		if !movieSidecarOK(cfg, f.Path) {
-			return false
+	meta, err := readSidecarNFO(nfo)
+	if err != nil || !kindAgrees(job.Kind, meta.root) {
+		return false
+	}
+	if job.Kind == "show" && requireEpisodeNFO {
+		for _, f := range job.Files {
+			if !episodeNFOOK(f.Path) {
+				return false
+			}
 		}
 	}
 	return true
 }
 
 func JobFromSidecar(cfg config.Config, job Job) Job {
-	path, poster := sidecarMetaPaths(cfg, job)
-	title, year, plot, provider, id := job.Title, job.Year, "", "", ""
-	if path != "" {
-		if t, y, p, pr, i, err := readSidecarNFO(path); err == nil {
-			if t != "" {
-				title = t
+	job = fillSidecar(cfg, job)
+	nfo, poster, ok := titleSidecar(job)
+	title, year := job.Title, job.Year
+	var meta nfoMeta
+	if ok {
+		if m, err := readSidecarNFO(nfo); err == nil {
+			meta = m
+			if m.title != "" {
+				title = m.title
 			}
-			if y != "" {
-				year = y
+			if m.year != "" {
+				year = m.year
 			}
-			plot, provider, id = p, pr, i
 		}
 	}
 	if title != "" {
@@ -77,13 +91,13 @@ func JobFromSidecar(cfg config.Config, job Job) Job {
 		job.Year = year
 	}
 	c := Candidate{
-		Provider: provider,
-		ID:       id,
+		Provider: meta.provider,
+		ID:       meta.id,
 		Title:    title,
 		Year:     year,
 		Score:    1,
 		Jaccard:  1,
-		Synopsis: plot,
+		Synopsis: meta.plot,
 		Poster:   poster,
 	}
 	job.Status = "matched"
@@ -94,134 +108,93 @@ func JobFromSidecar(cfg config.Config, job Job) Job {
 	return job
 }
 
-func showJob(job Job) bool {
-	if fileExists(filepath.Join(jobDir(job), "tvshow.nfo")) {
-		return true
-	}
-	for _, f := range job.Files {
-		if f.Season != "" || f.Episode != "" {
-			return true
+func fillSidecar(_ config.Config, job Job) Job {
+	nfo, _, ok := titleSidecar(job)
+	if ok {
+		if meta, err := readSidecarNFO(nfo); err == nil && kindAgrees(job.Kind, meta.root) {
+			if meta.title != "" {
+				job.Title = meta.title
+			}
+			if meta.year != "" {
+				job.Year = meta.year
+			}
 		}
-		if _, _, ok := parseFilenameSE(filepath.Base(f.Path)); ok {
-			return true
-		}
 	}
-	return false
+	if job.Kind == "show" {
+		job.Files = applyEpisodeNFO(job.Files)
+	}
+	return job
 }
 
-func jobDir(job Job) string {
-	if st, err := os.Stat(job.Path); err == nil && st.IsDir() {
-		return job.Path
+func titleSidecar(job Job) (nfo, poster string, ok bool) {
+	if job.Path == "" {
+		return "", "", false
 	}
-	if job.Path != "" {
-		return filepath.Dir(job.Path)
-	}
-	if len(job.Files) > 0 {
-		return filepath.Dir(job.Files[0].Path)
-	}
-	return ""
-}
-
-func episodeNFOOK(video string) bool {
-	dir := filepath.Dir(video)
-	base := trimExt(filepath.Base(video))
-	return fileExists(filepath.Join(dir, "episode.nfo")) || fileExists(filepath.Join(dir, base+".nfo"))
-}
-
-func findShowPoster(dir string) string {
-	if p := findPoster(dir, "", ""); p != "" {
-		return p
-	}
-	ents, err := os.ReadDir(dir)
+	st, err := os.Stat(job.Path)
 	if err != nil {
-		return ""
+		return "", "", false
 	}
-	for _, e := range ents {
-		if !e.IsDir() {
+	if st.IsDir() {
+		name := "movie.nfo"
+		if job.Kind == "show" {
+			name = "tvshow.nfo"
+		}
+		nfo = filepath.Join(job.Path, name)
+		poster = findPoster(job.Path, "", "")
+		return nfo, poster, fileExists(nfo)
+	}
+	dir := filepath.Dir(job.Path)
+	base := trimExt(filepath.Base(job.Path))
+	nfo = filepath.Join(dir, base+".nfo")
+	poster = findPoster(dir, base, "")
+	return nfo, poster, fileExists(nfo)
+}
+
+func kindAgrees(kind, root string) bool {
+	switch strings.ToLower(root) {
+	case "tvshow":
+		return kind == "show"
+	case "movie":
+		return kind == "movie"
+	default:
+		return false
+	}
+}
+
+func applyEpisodeNFO(files []JobFile) []JobFile {
+	for i, f := range files {
+		path := episodeNFOPath(f.Path)
+		if path == "" {
 			continue
 		}
-		child := filepath.Join(dir, e.Name())
-		season := ""
-		if n, ok := parseFolderSeason(e.Name()); ok {
-			season = n
+		meta, err := readSidecarNFO(path)
+		if err != nil {
+			continue
 		}
-		if p := findPoster(child, "", season); p != "" {
+		if meta.season != "" {
+			files[i].Season = canonNum(meta.season)
+		}
+		if meta.episode != "" {
+			files[i].Episode = canonNum(meta.episode)
+		}
+	}
+	return files
+}
+
+func episodeNFOPath(video string) string {
+	dir := filepath.Dir(video)
+	base := trimExt(filepath.Base(video))
+	for _, name := range []string{base + ".nfo", "episode.nfo"} {
+		p := filepath.Join(dir, name)
+		if fileExists(p) {
 			return p
 		}
 	}
 	return ""
 }
 
-func movieSidecarOK(cfg config.Config, video string) bool {
-	dir := filepath.Dir(video)
-	base := trimExt(filepath.Base(video))
-	generic := isGenericParent(filepath.Base(dir))
-	multi := countPrimaryVideos(cfg, dir) > 1
-	if generic || multi {
-		if !fileExists(filepath.Join(dir, base+".nfo")) {
-			return false
-		}
-	} else if !fileExists(filepath.Join(dir, "movie.nfo")) && !fileExists(filepath.Join(dir, base+".nfo")) {
-		return false
-	}
-	return findPoster(dir, base, "") != ""
-}
-
-func sidecarMetaPaths(cfg config.Config, job Job) (nfo, poster string) {
-	dir := jobDir(job)
-	if showJob(job) {
-		nfo = filepath.Join(dir, "tvshow.nfo")
-		poster = findShowPoster(dir)
-		if fileExists(nfo) {
-			return nfo, poster
-		}
-	}
-	var video string
-	if st, err := os.Stat(job.Path); err == nil && !st.IsDir() {
-		video = job.Path
-	} else if len(job.Files) > 0 {
-		video = job.Files[0].Path
-	}
-	if video == "" {
-		return "", findPoster(dir, "", "")
-	}
-	vdir := filepath.Dir(video)
-	base := trimExt(filepath.Base(video))
-	for _, name := range []string{"movie.nfo", base + ".nfo", "tvshow.nfo", "episode.nfo"} {
-		p := filepath.Join(vdir, name)
-		if fileExists(p) {
-			nfo = p
-			break
-		}
-	}
-	return nfo, findPoster(vdir, base, "")
-}
-
-func isGenericParent(name string) bool {
-	_, ok := genericParents[strings.ToLower(strings.TrimSpace(name))]
-	return ok
-}
-
-func countPrimaryVideos(cfg config.Config, dir string) int {
-	ext := cfg.GroupVideoExt()
-	extras := cfg.GroupExtras()
-	ents, err := os.ReadDir(dir)
-	if err != nil {
-		return 0
-	}
-	n := 0
-	for _, e := range ents {
-		if e.IsDir() {
-			if _, ok := extras[strings.ToLower(e.Name())]; ok {
-				continue
-			}
-			continue
-		}
-		if _, ok := ext[strings.ToLower(filepath.Ext(e.Name()))]; ok {
-			n++
-		}
-	}
-	return n
+func episodeNFOOK(video string) bool {
+	return episodeNFOPath(video) != ""
 }
 
 func findPoster(dir, base, season string) string {
@@ -276,28 +249,43 @@ func fileExists(path string) bool {
 	return err == nil && !st.IsDir()
 }
 
-func readSidecarNFO(path string) (title, year, plot, provider, id string, err error) {
+type nfoMeta struct {
+	root, title, year, plot, provider, id, season, episode string
+}
+
+func readSidecarNFO(path string) (nfoMeta, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return "", "", "", "", "", err
+		return nfoMeta{}, err
 	}
 	var n struct {
 		XMLName  xml.Name
 		Title    string `xml:"title"`
 		Year     string `xml:"year"`
 		Plot     string `xml:"plot"`
+		Season   string `xml:"season"`
+		Episode  string `xml:"episode"`
 		UniqueID struct {
 			Type  string `xml:"type,attr"`
 			Value string `xml:",chardata"`
 		} `xml:"uniqueid"`
 	}
 	if err = xml.Unmarshal(b, &n); err != nil {
-		return "", "", "", "", "", err
+		return nfoMeta{}, err
 	}
 	switch strings.ToLower(n.XMLName.Local) {
 	case "movie", "tvshow", "episodedetails":
-		return n.Title, n.Year, n.Plot, n.UniqueID.Type, n.UniqueID.Value, nil
+		return nfoMeta{
+			root:     n.XMLName.Local,
+			title:    n.Title,
+			year:     n.Year,
+			plot:     n.Plot,
+			provider: n.UniqueID.Type,
+			id:       n.UniqueID.Value,
+			season:   n.Season,
+			episode:  n.Episode,
+		}, nil
 	default:
-		return "", "", "", "", "", os.ErrInvalid
+		return nfoMeta{}, os.ErrInvalid
 	}
 }

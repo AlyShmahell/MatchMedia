@@ -19,6 +19,10 @@ func TestNormalizeMode(t *testing.T) {
 	if err != nil || got != ModeChanges {
 		t.Fatalf("changes: %q %v", got, err)
 	}
+	got, err = NormalizeMode(ModeNFO)
+	if err != nil || got != ModeNFO {
+		t.Fatalf("nfo: %q %v", got, err)
+	}
 	if _, err = NormalizeMode("delta"); err == nil {
 		t.Fatal("expected unknown mode")
 	}
@@ -35,8 +39,14 @@ func TestRequireEpisodeNFO(t *testing.T) {
 	if RequireEpisodeNFO(ModeChanges, &no) {
 		t.Fatal("changes false")
 	}
-	if !RequireEpisodeNFO(ModeRescan, &no) {
+	if RequireEpisodeNFO(ModeRescan, &no) {
 		t.Fatal("rescan ignores flag")
+	}
+	if RequireEpisodeNFO(ModeNFO, nil) {
+		t.Fatal("nfo omit defaults false")
+	}
+	if !RequireEpisodeNFO(ModeNFO, &yes) {
+		t.Fatal("nfo true")
 	}
 }
 

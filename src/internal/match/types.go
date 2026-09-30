@@ -12,6 +12,8 @@ type Grouped struct {
 	Cleaned
 	Path   string
 	Parent string
+	Kind   string
+	Role   string
 	Files  []JobFile
 }
 
@@ -73,6 +75,8 @@ type Job struct {
 	Episode    string          `json:"episode,omitempty"`
 	IMDB       string          `json:"imdb,omitempty"`
 	Path       string          `json:"path,omitempty"`
+	Kind       string          `json:"kind,omitempty"`
+	Role       string          `json:"role,omitempty"`
 	Files      []JobFile       `json:"files,omitempty"`
 	Status     string          `json:"status"`
 	Ranker     string          `json:"ranker,omitempty"`

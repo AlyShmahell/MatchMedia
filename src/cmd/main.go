@@ -14,13 +14,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/alyshmahell/matchmedia/lib/config"
-	matchfs "github.com/alyshmahell/matchmedia/lib/fs"
-	"github.com/alyshmahell/matchmedia/lib/ingest"
-	"github.com/alyshmahell/matchmedia/lib/jobs"
-	"github.com/alyshmahell/matchmedia/lib/library"
-	"github.com/alyshmahell/matchmedia/lib/match"
-	"github.com/alyshmahell/matchmedia/lib/scan"
+	"github.com/alyshmahell/matchmedia/src/internal/config"
+	matchfs "github.com/alyshmahell/matchmedia/src/internal/fs"
+	"github.com/alyshmahell/matchmedia/src/internal/ingest"
+	"github.com/alyshmahell/matchmedia/src/internal/jobs"
+	"github.com/alyshmahell/matchmedia/src/internal/library"
+	"github.com/alyshmahell/matchmedia/src/internal/match"
+	"github.com/alyshmahell/matchmedia/src/internal/scan"
 )
 
 func main() {
@@ -179,7 +179,7 @@ func main() {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
-		children, err := scan.Children(root, target, cfg.SampleVideos())
+		children, err := scanChildren(cfg, root, target)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
@@ -225,7 +225,7 @@ func main() {
 		}
 		worker.SetSkipEpisodePosters(skipEpisodePosters(r))
 		worker.Kick()
-		writeJSON(w, http.StatusAccepted, map[string]any{"session": sess, "jobs": created})
+		writeJSON(w, http.StatusAccepted, map[string]any{"session": sess, "jobs": len(created)})
 	})
 	mux.HandleFunc("POST /v1/match", func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := requireSession(w, r, store, cfg, scans)
@@ -631,6 +631,18 @@ func filterWaits(all []match.Wait, list []match.Job) []match.Wait {
 	return out
 }
 
+func scanChildren(cfg config.Config, root, target string) ([]scan.Child, error) {
+	shows := match.Group(cfg, root, target)
+	if match.OneShowAt(root, target, shows) {
+		videos, err := scan.ListVideos(root, target)
+		if err != nil {
+			return nil, err
+		}
+		return []scan.Child{{Path: target, Videos: len(videos)}}, nil
+	}
+	return scan.Children(root, target, cfg.SampleVideos())
+}
+
 func enqueueScan(ctx context.Context, cfg config.Config, store *jobs.Store, worker *jobs.Worker, scans *scanRun, session string, children []scan.Child, library, mode string, requireEpisodeNFO bool) {
 	defer scans.done()
 	defer func() {
@@ -645,8 +657,11 @@ func enqueueScan(ctx context.Context, cfg config.Config, store *jobs.Store, work
 			return
 		}
 		created := jobsFromShows(match.Group(cfg, library, child.Path), library, child)
-		if mode == scan.ModeChanges {
+		switch mode {
+		case scan.ModeChanges:
 			created = match.ApplyChanges(cfg, created, requireEpisodeNFO)
+		case scan.ModeNFO:
+			created = match.ApplyNFO(cfg, created, requireEpisodeNFO)
 		}
 		if ctx.Err() != nil {
 			return
@@ -694,6 +709,8 @@ func jobsFromShows(shows []match.Grouped, root string, child scan.Child) []match
 	for i := range created {
 		created[i].Path = resolveShowPath(root, child.Path, shows[i].Path)
 		created[i].Parent = shows[i].Parent
+		created[i].Kind = shows[i].Kind
+		created[i].Role = shows[i].Role
 		if len(shows[i].Files) == 0 {
 			continue
 		}

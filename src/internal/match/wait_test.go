@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alyshmahell/matchmedia/lib/config"
+	"github.com/alyshmahell/matchmedia/src/internal/config"
 )
 
 func TestWaitLogConcurrentStartEnd(t *testing.T) {

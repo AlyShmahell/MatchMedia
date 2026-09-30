@@ -5,12 +5,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	matchfs "github.com/alyshmahell/matchmedia/lib/fs"
+	matchfs "github.com/alyshmahell/matchmedia/src/internal/fs"
 )
 
 const (
 	ModeRescan  = "rescan"
 	ModeChanges = "changes"
+	ModeNFO     = "nfo"
 )
 
 func NormalizeMode(mode string) (string, error) {
@@ -19,19 +20,28 @@ func NormalizeMode(mode string) (string, error) {
 		return ModeRescan, nil
 	case ModeChanges:
 		return ModeChanges, nil
+	case ModeNFO:
+		return ModeNFO, nil
 	default:
 		return "", fmt.Errorf("unknown mode")
 	}
 }
 
 func RequireEpisodeNFO(mode string, flag *bool) bool {
-	if mode != ModeChanges {
-		return true
+	switch mode {
+	case ModeNFO:
+		if flag == nil {
+			return false
+		}
+		return *flag
+	case ModeChanges:
+		if flag == nil {
+			return true
+		}
+		return *flag
+	default:
+		return false
 	}
-	if flag == nil {
-		return true
-	}
-	return *flag
 }
 
 func ResolveTarget(roots []string, path string) (string, string, error) {

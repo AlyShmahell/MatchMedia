@@ -332,6 +332,19 @@ function jobOrder(j) {
   return 3;
 }
 
+function queuedCount(payload) {
+  if (!payload) {
+    return 0;
+  }
+  if (typeof payload.jobs === "number") {
+    return payload.jobs;
+  }
+  if (Array.isArray(payload.jobs)) {
+    return payload.jobs.length;
+  }
+  return 0;
+}
+
 function renderJobs(jobs) {
   const box = $("jobs");
   const empty = $("empty");
@@ -677,7 +690,7 @@ $("upload").addEventListener("submit", async (ev) => {
   if (payload && payload.session) {
     setSession(payload.session);
   }
-  const n = payload && Array.isArray(payload.jobs) ? payload.jobs.length : 0;
+  const n = queuedCount(payload);
   status.textContent = "queued " + n + " titles";
   await loadJobs();
   restartPending();
@@ -778,7 +791,7 @@ $("scan").addEventListener("click", async () => {
   if (payload && typeof payload.files === "number") {
     status.textContent = "grouping " + payload.files + " files…";
   } else {
-    const n = payload && Array.isArray(payload.jobs) ? payload.jobs.length : 0;
+    const n = queuedCount(payload);
     status.textContent = "queued " + n + " titles";
   }
   await loadJobs();

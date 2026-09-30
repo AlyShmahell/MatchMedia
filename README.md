@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="matchmedia/share/assets/matchmedia.svg" alt="MatchMedia" width="180">
+  <img src="src/share/assets/matchmedia.svg" alt="MatchMedia" width="180">
 </p>
 
 <h1 align="center">MatchMedia</h1>

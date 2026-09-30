@@ -5,9 +5,9 @@ import (
 	"log"
 	"sync"
 
-	"github.com/alyshmahell/matchmedia/lib/config"
-	"github.com/alyshmahell/matchmedia/lib/library"
-	"github.com/alyshmahell/matchmedia/lib/match"
+	"github.com/alyshmahell/matchmedia/src/internal/config"
+	"github.com/alyshmahell/matchmedia/src/internal/library"
+	"github.com/alyshmahell/matchmedia/src/internal/match"
 )
 
 type Worker struct {
