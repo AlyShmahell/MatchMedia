@@ -128,7 +128,7 @@ func autoMatch(cfg config.Config, job Job, ranked []Candidate, want map[string]s
 	if len(ranked) > 1 && best.Score >= cfg.Match.MinScore && best.Score-ranked[1].Score >= cfg.Match.MinMargin {
 		return best, true
 	}
-	if uniqueQueryCov(cfg, job, ranked) {
+	if uniqueQueryCov(cfg, job, ranked) && primaryExtendsQuery(job.Title, best) {
 		return best, true
 	}
 	pref := preferSubset(want, ranked)
@@ -139,6 +139,19 @@ func autoMatch(cfg config.Config, job Job, ranked []Candidate, want map[string]s
 		return Candidate{}, false
 	}
 	return pref[0], true
+}
+
+func primaryExtendsQuery(jobTitle string, c Candidate) bool {
+	q := tokenSet(jobTitle)
+	if len(q) == 0 {
+		return false
+	}
+	_, covered := bestCoveringTitle(q, c)
+	cset := tokenSet(covered)
+	if len(cset) <= len(q) {
+		return false
+	}
+	return coverage(q, cset) == 1
 }
 
 func uniqueQueryCov(cfg config.Config, job Job, ranked []Candidate) bool {

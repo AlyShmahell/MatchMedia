@@ -570,3 +570,267 @@ func TestGroupCourFoldersOneShow(t *testing.T) {
 		}
 	}
 }
+
+func TestGroupFranchiseFilmsAreOwnMovies(t *testing.T) {
+	lib := t.TempDir()
+	child := filepath.Join(lib, "Halo")
+	writeTree(t, lib, []string{
+		"Halo/Halo 4 Forward Unto Dawn/Halo 4 Forward Unto Dawn.mkv",
+		"Halo/Halo Legends/Halo Legends.mkv",
+		"Halo/Halo Nightfall/Halo Nightfall.mkv",
+		"Halo/Halo the Fall of Reach/Halo the Fall of Reach.mkv",
+	})
+	got := Group(testCfg(t), lib, child)
+	if len(got) != 4 {
+		t.Fatalf("got=%v", titlesOf(got))
+	}
+	for _, g := range got {
+		if g.Kind != "movie" || g.Role != "title" || len(g.Files) != 1 {
+			t.Fatalf("job=%+v", g)
+		}
+		if g.Title == "Halo" || filepath.ToSlash(g.Path) == "Halo" {
+			t.Fatalf("collapsed to parent: %+v", g)
+		}
+		if g.Title != filepath.Base(g.Path) {
+			t.Fatalf("title=%q path=%q", g.Title, g.Path)
+		}
+	}
+}
+
+func TestGroupFranchiseSeriesStaySeparate(t *testing.T) {
+	lib := t.TempDir()
+	child := filepath.Join(lib, "Stargate")
+	writeTree(t, lib, []string{
+		"Stargate/Stargate Atlantis/Stargate Atlantis S01E01.mkv",
+		"Stargate/Stargate Atlantis/Stargate Atlantis S01E02.mkv",
+		"Stargate/Stargate SG1/Stargate SG1 S05E01.mkv",
+		"Stargate/Stargate Universe/Stargate Universe S01E01.mkv",
+	})
+	got := Group(testCfg(t), lib, child)
+	if len(got) != 3 {
+		t.Fatalf("got=%v", titlesOf(got))
+	}
+	for _, g := range got {
+		if g.Kind != "show" || g.Title == "Stargate" || filepath.ToSlash(g.Path) == "Stargate" {
+			t.Fatalf("job=%+v", g)
+		}
+	}
+	atl := groupedByTitle(t, got, "Stargate Atlantis")
+	sg1 := groupedByTitle(t, got, "Stargate SG1")
+	uni := groupedByTitle(t, got, "Stargate Universe")
+	if len(atl.Files) != 2 || len(sg1.Files) != 1 || len(uni.Files) != 1 {
+		t.Fatalf("files atl=%d sg1=%d uni=%d", len(atl.Files), len(sg1.Files), len(uni.Files))
+	}
+	a1 := fileBySuffix(t, atl.Files, "S01E01.mkv")
+	if a1.Season != "1" || a1.Episode != "1" {
+		t.Fatalf("atlantis=%+v", a1)
+	}
+	s5 := fileBySuffix(t, sg1.Files, "S05E01.mkv")
+	if s5.Season != "5" || s5.Episode != "1" {
+		t.Fatalf("sg1=%+v", s5)
+	}
+}
+
+func TestGroupSpinoffDoesNotContinueEpisodes(t *testing.T) {
+	lib := t.TempDir()
+	child := filepath.Join(lib, "Barakamon")
+	files := []string{
+		"Barakamon/Handa-kun/Barakamon Handa-kun E01.mkv",
+		"Barakamon/Handa-kun/Barakamon Handa-kun E02.mkv",
+	}
+	for i := 1; i <= 3; i++ {
+		files = append(files, filepath.ToSlash(filepath.Join("Barakamon", "Season 1", "Barakamon S01E"+strconv.Itoa(i)+".mkv")))
+	}
+	writeTree(t, lib, files)
+	got := Group(testCfg(t), lib, child)
+	show := groupedByTitle(t, got, "Barakamon")
+	spin := groupedByTitle(t, got, "Handa-kun")
+	if show.Kind != "show" || spin.Kind != "show" {
+		t.Fatalf("kinds show=%s spin=%s", show.Kind, spin.Kind)
+	}
+	if !strings.HasSuffix(filepath.ToSlash(spin.Path), "Barakamon/Handa-kun") {
+		t.Fatalf("spin path=%s", spin.Path)
+	}
+	if len(show.Files) != 3 || len(spin.Files) != 2 {
+		t.Fatalf("show=%d spin=%d", len(show.Files), len(spin.Files))
+	}
+	e1 := fileBySuffix(t, spin.Files, "E01.mkv")
+	e2 := fileBySuffix(t, spin.Files, "E02.mkv")
+	if e1.Season != "1" || e1.Episode != "1" || e2.Episode != "2" {
+		t.Fatalf("spin files=%+v", spin.Files)
+	}
+	for _, f := range show.Files {
+		if strings.Contains(f.Path, "Handa-kun") {
+			t.Fatalf("parent kept spinoff: %+v", show.Files)
+		}
+	}
+}
+
+func TestGroupDashSubtitleIsNextSeason(t *testing.T) {
+	lib := t.TempDir()
+	child := filepath.Join(lib, "Knights of Sidonia")
+	writeTree(t, lib, []string{
+		"Knights of Sidonia/Sidonia no Kishi/Sidonia no Kishi - 01.mkv",
+		"Knights of Sidonia/Sidonia no Kishi/Sidonia no Kishi - 02.mkv",
+		"Knights of Sidonia/Sidonia no Kishi - Daikyuu Wakusei Sen'eki/Sidonia no Kishi - Daikyuu Wakusei Sen'eki - 01.mkv",
+		"Knights of Sidonia/Sidonia no Kishi - Daikyuu Wakusei Sen'eki/Sidonia no Kishi - Daikyuu Wakusei Sen'eki - 02.mkv",
+	})
+	got := Group(testCfg(t), lib, child)
+	if len(got) != 1 || got[0].Kind != "show" || got[0].Title != "Sidonia no Kishi" {
+		t.Fatalf("got=%+v", got)
+	}
+	if len(got[0].Files) != 4 {
+		t.Fatalf("files=%+v", got[0].Files)
+	}
+	s1 := fileBySuffix(t, got[0].Files, "Sidonia no Kishi/Sidonia no Kishi - 01.mkv")
+	s2 := fileBySuffix(t, got[0].Files, "Sen'eki/Sidonia no Kishi - Daikyuu Wakusei Sen'eki - 01.mkv")
+	if s1.Season != "1" || s1.Episode != "1" {
+		t.Fatalf("s1=%+v", s1)
+	}
+	if s2.Season != "2" || s2.Episode != "1" {
+		t.Fatalf("s2=%+v", s2)
+	}
+}
+
+func TestGroupSharedPrefixIsSeparateShow(t *testing.T) {
+	lib := t.TempDir()
+	child := filepath.Join(lib, "Miss Kobayashi's Dragon Maid")
+	writeTree(t, lib, []string{
+		"Miss Kobayashi's Dragon Maid/Kobayashi-san Chi no Maid Dragon/Kobayashi-san Chi no Maid Dragon - 01.mkv",
+		"Miss Kobayashi's Dragon Maid/Kobayashi-san Chi no Maid Dragon/Kobayashi-san Chi no Maid Dragon - 02.mkv",
+		"Miss Kobayashi's Dragon Maid/Kobayashi-san Chi no OO Dragon/Kobayashi-san Chi no OO Dragon - 01.mkv",
+		"Miss Kobayashi's Dragon Maid/Kobayashi-san Chi no OO Dragon/Kobayashi-san Chi no OO Dragon - 02.mkv",
+	})
+	got := Group(testCfg(t), lib, child)
+	if len(got) != 2 {
+		t.Fatalf("got=%v", titlesOf(got))
+	}
+	maid := groupedByTitle(t, got, "Kobayashi-san Chi no Maid Dragon")
+	oo := groupedByTitle(t, got, "Kobayashi-san Chi no OO Dragon")
+	if maid.Kind != "show" || oo.Kind != "show" {
+		t.Fatalf("maid=%s oo=%s", maid.Kind, oo.Kind)
+	}
+	if filepath.ToSlash(maid.Path) == "Miss Kobayashi's Dragon Maid" || filepath.ToSlash(oo.Path) == "Miss Kobayashi's Dragon Maid" {
+		t.Fatalf("paths maid=%s oo=%s", maid.Path, oo.Path)
+	}
+	ep := fileBySuffix(t, oo.Files, "OO Dragon - 01.mkv")
+	if ep.Season != "1" || ep.Episode != "1" {
+		t.Fatalf("oo=%+v", ep)
+	}
+}
+
+func TestGroupMovieContainerIsOwnFilm(t *testing.T) {
+	lib := t.TempDir()
+	child := filepath.Join(lib, "Chainsaw Man")
+	writeTree(t, lib, []string{
+		"Chainsaw Man/Season 1/Chainsaw Man S01E01.mkv",
+		"Chainsaw Man/Movies/[Judas] Chainsaw Man The Movie.mkv",
+		"Chainsaw Man/OVA/Chainsaw Man OVA - 01.mkv",
+		"Chainsaw Man/movies/Made In Abyss - Dawn Of The Deep Soul.mkv",
+	})
+	got := Group(testCfg(t), lib, child)
+	show := groupedByTitle(t, got, "Chainsaw Man")
+	if show.Kind != "show" {
+		t.Fatalf("show=%+v", show)
+	}
+	ep := fileBySuffix(t, show.Files, "S01E01.mkv")
+	ova := fileBySuffix(t, show.Files, "OVA - 01.mkv")
+	if ep.Season != "1" || ep.Episode != "1" || ova.Season != "0" {
+		t.Fatalf("show files=%+v", show.Files)
+	}
+	for _, f := range show.Files {
+		if strings.Contains(f.Path, "The Movie") || strings.Contains(f.Path, "Dawn Of The Deep Soul") {
+			t.Fatalf("film folded onto show: %+v", show.Files)
+		}
+	}
+	film := groupedByTitle(t, got, "Chainsaw Man The Movie")
+	dawn := groupedByTitle(t, got, "Made In Abyss Dawn Of The Deep Soul")
+	if film.Kind != "movie" || film.Role != "title" || len(film.Files) != 1 {
+		t.Fatalf("film=%+v", film)
+	}
+	if dawn.Kind != "movie" || dawn.Role != "title" {
+		t.Fatalf("dawn=%+v", dawn)
+	}
+	if film.Files[0].Season != "" || dawn.Files[0].Season != "" {
+		t.Fatalf("film numbers film=%+v dawn=%+v", film.Files, dawn.Files)
+	}
+}
+
+func TestGroupLooseFilmKeepsItsTitle(t *testing.T) {
+	lib := t.TempDir()
+	writeTree(t, lib, []string{
+		"Jujutsu Kaisen/Season 1/Jujutsu Kaisen S01E01.mkv",
+		"Jujutsu Kaisen/Jujutsu Kaisen 0.mkv",
+		"DanMachi/Season 1/DanMachi S01E01.mkv",
+		"DanMachi/Arrow of the Orion/Arrow of the Orion.mkv",
+		"Black Clover/Season 1/Black Clover S01E01.mkv",
+		"Black Clover/Black Clover Sword of the Wizard King (2023).mkv",
+	})
+	cfg := testCfg(t)
+	jjk := Group(cfg, lib, filepath.Join(lib, "Jujutsu Kaisen"))
+	zero := groupedByTitle(t, jjk, "Jujutsu Kaisen 0")
+	if zero.Kind != "movie" || len(zero.Files) != 1 {
+		t.Fatalf("zero=%+v", zero)
+	}
+	dan := Group(cfg, lib, filepath.Join(lib, "DanMachi"))
+	arrow := groupedByTitle(t, dan, "Arrow of the Orion")
+	if arrow.Kind != "movie" || !strings.HasSuffix(filepath.ToSlash(arrow.Path), "Arrow of the Orion") {
+		t.Fatalf("arrow=%+v", arrow)
+	}
+	clover := Group(cfg, lib, filepath.Join(lib, "Black Clover"))
+	sword := groupedByTitle(t, clover, "Black Clover Sword of the Wizard King")
+	if sword.Kind != "movie" || sword.Year != "2023" {
+		t.Fatalf("sword=%+v", sword)
+	}
+}
+
+func TestGroupPackedSeasonEpisode(t *testing.T) {
+	lib := t.TempDir()
+	child := filepath.Join(lib, "Detectorists")
+	writeTree(t, lib, []string{
+		"Detectorists/Season 1/Detectorists 101.mp4",
+		"Detectorists/Season 1/Detectorists 102.mp4",
+		"Detectorists/Season 1/Detectorists 106.mp4",
+		"Detectorists/Season 1/FlashForward S01E01.mkv",
+		"Detectorists/Season 1/Detectorists 201.mp4",
+		"Detectorists/Season 2/Detectorists 201.mp4",
+		"Detectorists/Season 2/Detectorists 207.mp4",
+	})
+	got := Group(testCfg(t), lib, child)
+	if len(got) != 1 || got[0].Kind != "show" {
+		t.Fatalf("got=%+v", got)
+	}
+	e101 := fileBySuffix(t, got[0].Files, "Season 1/Detectorists 101.mp4")
+	e102 := fileBySuffix(t, got[0].Files, "Season 1/Detectorists 102.mp4")
+	e106 := fileBySuffix(t, got[0].Files, "Season 1/Detectorists 106.mp4")
+	flash := fileBySuffix(t, got[0].Files, "FlashForward S01E01.mkv")
+	mis := fileBySuffix(t, got[0].Files, "Season 1/Detectorists 201.mp4")
+	e201 := fileBySuffix(t, got[0].Files, "Season 2/Detectorists 201.mp4")
+	e207 := fileBySuffix(t, got[0].Files, "Season 2/Detectorists 207.mp4")
+	if e101.Season != "1" || e101.Episode != "1" {
+		t.Fatalf("101=%+v", e101)
+	}
+	if e102.Episode != "2" || e106.Episode != "6" {
+		t.Fatalf("102=%+v 106=%+v", e102, e106)
+	}
+	if flash.Season != "1" || flash.Episode != "1" {
+		t.Fatalf("sxxe=%+v", flash)
+	}
+	if mis.Season != "1" || mis.Episode != "201" {
+		t.Fatalf("mismatched hundreds=%+v", mis)
+	}
+	if e201.Season != "2" || e201.Episode != "1" || e207.Episode != "7" {
+		t.Fatalf("201=%+v 207=%+v", e201, e207)
+	}
+}
+
+func groupedByTitle(t *testing.T, got []Grouped, title string) Grouped {
+	t.Helper()
+	for _, g := range got {
+		if g.Title == title {
+			return g
+		}
+	}
+	t.Fatalf("missing %q in %v", title, titlesOf(got))
+	return Grouped{}
+}

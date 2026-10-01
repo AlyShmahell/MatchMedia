@@ -14,6 +14,7 @@ var (
 	folderSeasonRe = regexp.MustCompile(`(?i)season\s*(\d+)`)
 	folderSxxNumRe = regexp.MustCompile(`(?i)^s(\d{1,2})$`)
 	trailEpRe      = regexp.MustCompile(`(?i)(?:^|[-_\s]+)(\d{1,3})\s*$`)
+	trailENumRe    = regexp.MustCompile(`(?i)(?:^|[-_\s]+)e(\d{1,3})\s*$`)
 )
 
 func (g *grouper) attachFiles(rows []groupedRow) []groupedRow {
@@ -34,7 +35,7 @@ func (g *grouper) finish(rows []groupedRow) []groupedRow {
 		if len(files) == 0 {
 			continue
 		}
-		if g.showRow(row.path, files) {
+		if !row.forceMovie && g.showRow(row.path, files) {
 			row.kind = "show"
 			row.files = numberShowFiles(files)
 		} else {
@@ -323,8 +324,25 @@ func (g *grouper) inferSE(jobRel, videoRel string) (season, episode string) {
 	}
 	if e, ok := trailingEpisode(file); ok {
 		episode = e
+		if packed, ok := packedSxEE(season, e); ok {
+			episode = packed
+		}
 	}
 	return season, episode
+}
+
+func packedSxEE(season, episode string) (string, bool) {
+	if season == "" || len(episode) != 3 {
+		return "", false
+	}
+	if canonNum(episode[:1]) != canonNum(season) {
+		return "", false
+	}
+	ep := canonNum(episode[1:])
+	if ep == "" || ep == "0" {
+		return "", false
+	}
+	return ep, true
 }
 
 func parseFolderSeason(name string) (string, bool) {
@@ -365,11 +383,13 @@ func trailingEpisode(name string) (string, bool) {
 	base = bracketsRe.ReplaceAllString(base, " ")
 	base = parenRe.ReplaceAllString(base, " ")
 	base = strings.Trim(base, " _-")
-	m := trailEpRe.FindStringSubmatch(base)
-	if m == nil {
-		return "", false
+	if m := trailEpRe.FindStringSubmatch(base); m != nil {
+		return canonNum(m[1]), true
 	}
-	return canonNum(m[1]), true
+	if m := trailENumRe.FindStringSubmatch(base); m != nil {
+		return canonNum(m[1]), true
+	}
+	return "", false
 }
 
 func trailingPack(files []JobFile) bool {
@@ -413,7 +433,8 @@ func dropBareDuplicates(files []JobFile) []JobFile {
 			continue
 		}
 		for _, i := range idxs {
-			if _, ok := trailingEpisode(filepath.Base(files[i].Path)); ok {
+			ep, ok := trailingEpisode(filepath.Base(files[i].Path))
+			if ok && len(ep) < 3 {
 				drop[i] = true
 			}
 		}

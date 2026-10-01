@@ -107,7 +107,7 @@ group:
     - hmax
     - cr
     - bili
-  kinds: [ova, ovas, oad, oads, special, specials, movie, movies, film]
+  kinds: [ova, ovas, oad, oads, special, specials]
 ingest:
   sample_rows: 3
   aliases:

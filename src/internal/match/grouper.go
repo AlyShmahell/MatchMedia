@@ -63,6 +63,7 @@ var qualityExtra = map[string]struct{}{
 type groupedRow struct {
 	title, year, path, parent, kind, role string
 	files                                 []JobFile
+	forceMovie                            bool
 }
 
 type preprocessor struct {
@@ -418,8 +419,8 @@ func (p *postprocessor) episodeAbsorb(s, root string) string {
 	if m == nil {
 		return s
 	}
-	roman, num, after := m[1], m[2], strings.TrimSpace(m[3])
-	if num == "0" && roman == "" && after == "" {
+	num, after := m[2], strings.TrimSpace(m[3])
+	if after != "" || num == "0" {
 		return s
 	}
 	return root
@@ -963,6 +964,16 @@ func (c *classifier) belongs(cleaned, raw, root string) bool {
 	return false
 }
 
+func movieContainerName(name string) bool {
+	n := strings.ToLower(strings.TrimSpace(strings.TrimRight(name, "/")))
+	switch n {
+	case "movie", "movies", "film", "films":
+		return true
+	default:
+		return false
+	}
+}
+
 func (c *classifier) classify(raw string, isDir bool, root string) string {
 	if c.pre.extrasName(raw) {
 		return "extras"
@@ -970,8 +981,14 @@ func (c *classifier) classify(raw string, isDir bool, root string) string {
 	if !isDir {
 		return "loose"
 	}
+	if movieContainerName(raw) {
+		return "movies"
+	}
 	tagged := tagRe.MatchString(raw)
 	cleaned := c.pre.segment(raw, false)
+	if movieContainerName(cleaned) {
+		return "movies"
+	}
 	if c.isSeasonName(raw, cleaned, root) {
 		return "season"
 	}
@@ -1111,6 +1128,9 @@ func (g *grouper) node(path, root string, years map[string]bool, pathRel string)
 		case "extras", "kind":
 			series = true
 			continue
+		case "movies":
+			out = append(out, g.movieContainer(e.abs, root, years, pathRel+"/"+e.name)...)
+			continue
 		case "season":
 			series = true
 			continue
@@ -1160,10 +1180,17 @@ func (g *grouper) node(path, root string, years map[string]bool, pathRel string)
 					series = true
 					continue
 				}
-				title, year := g.emit(row.label, years)
+				raw := row.label
+				for _, pair := range looseOther {
+					if titleKey(pair[1]) == titleKey(row.label) || titleKey(g.post.label(pair[1], root)) == titleKey(row.label) {
+						raw = pair[1]
+						break
+					}
+				}
+				title, year := g.emit(g.filmTitle(row.label, raw, root), years)
 				match := looseOther[0][0]
 				for _, pair := range looseOther {
-					if titleKey(pair[1]) == titleKey(row.label) {
+					if titleKey(pair[1]) == titleKey(raw) {
 						match = pair[0]
 						break
 					}
@@ -1172,6 +1199,7 @@ func (g *grouper) node(path, root string, years map[string]bool, pathRel string)
 			}
 		}
 	}
+	out = g.foldSeasonExtensions(out, pathRel)
 	if series || (len(out) == 0 && g.hasKeptVideos(path)) {
 		title, year := g.emit(root, years)
 		out = append([]groupedRow{{title: title, year: year, path: pathRel}}, out...)
@@ -1180,7 +1208,16 @@ func (g *grouper) node(path, root string, years map[string]bool, pathRel string)
 }
 
 func (g *grouper) partOfShow(absP, root string) bool {
+	dirName := filepath.Base(absP)
+	cleanedDir := g.pre.segment(dirName, false)
+	if cleanedDir == "" {
+		cleanedDir = dirName
+	}
+	if g.cls.isAlias(cleanedDir, root) || g.cls.isSeasonName(dirName, cleanedDir, root) {
+		return true
+	}
 	n := 0
+	namedParent := 0
 	for _, p := range g.videosFor(absP) {
 		if !g.keepVideo(absP, p) {
 			continue
@@ -1188,26 +1225,35 @@ func (g *grouper) partOfShow(absP, root string) bool {
 		n++
 		name := filepath.Base(p)
 		cleaned := g.pre.segment(name, true)
-		if !g.cls.namedForRoot(cleaned, name, root) {
+		if folderNamedInFile(cleanedDir, cleaned, name) && titleNorm(cleanedDir) != titleNorm(root) {
 			return false
 		}
+		if fileNamesTitle(cleaned, name, root) {
+			namedParent++
+		}
 	}
-	return n > 0
+	return n > 0 && namedParent == n
 }
 
-func (c *classifier) namedForRoot(cleaned, raw, root string) bool {
-	if c.isAlias(cleaned, root) || c.isRootPlusYear(cleaned, root) {
-		return true
-	}
-	nr := titleNorm(root)
-	if nr == "" {
+func fileNamesTitle(cleaned, raw, title string) bool {
+	nt := compactNorm(title)
+	if len(nt) < 3 {
 		return false
 	}
-	nc := titleNorm(cleaned)
-	if nc == "" {
-		nc = titleNorm(strings.TrimSuffix(raw, filepath.Ext(raw)))
+	for _, src := range []string{cleaned, strings.TrimSuffix(raw, filepath.Ext(raw))} {
+		if strings.Contains(compactNorm(src), nt) {
+			return true
+		}
 	}
-	return strings.Contains(nc, nr)
+	return false
+}
+
+func folderNamedInFile(folder, cleaned, raw string) bool {
+	return fileNamesTitle(cleaned, raw, folder)
+}
+
+func compactNorm(s string) string {
+	return strings.ReplaceAll(titleNorm(s), " ", "")
 }
 
 func (g *grouper) hasKeptVideos(path string) bool {
@@ -1217,6 +1263,129 @@ func (g *grouper) hasKeptVideos(path string) bool {
 		}
 	}
 	return false
+}
+
+func (g *grouper) filmTitle(labeled, raw, root string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return labeled
+	}
+	if root != "" && titleNorm(labeled) == titleNorm(root) && titleNorm(raw) != titleNorm(root) {
+		return raw
+	}
+	if labeled == "" {
+		return raw
+	}
+	return labeled
+}
+
+func (g *grouper) movieContainer(absP, root string, years map[string]bool, pathRel string) []groupedRow {
+	var out []groupedRow
+	for _, e := range g.immediate(absP) {
+		if e.dir {
+			if g.pre.extrasName(e.name) || movieContainerName(e.name) {
+				out = append(out, g.movieContainer(e.abs, root, years, pathRel+"/"+e.name)...)
+				continue
+			}
+			local := g.pre.segment(e.name, false)
+			if local == "" {
+				local = e.name
+			}
+			title, year := g.emit(g.filmTitle(g.post.label(local, root), local, root), years)
+			out = append(out, groupedRow{title: title, year: year, path: pathRel + "/" + e.name, forceMovie: true})
+			continue
+		}
+		if !g.isVideo(e.name) || !g.keepVideo(absP, e.abs) {
+			continue
+		}
+		cleaned := g.pre.segment(e.name, true)
+		if cleaned == "" {
+			cleaned = strings.TrimSuffix(e.name, filepath.Ext(e.name))
+		}
+		title, year := g.emit(g.filmTitle(g.post.label(cleaned, root), cleaned, root), years)
+		out = append(out, groupedRow{title: title, year: year, path: g.libRel(e.abs), forceMovie: true})
+	}
+	return out
+}
+
+func isDashExtensionName(base, ext string) bool {
+	b := strings.TrimSpace(base)
+	e := strings.TrimSpace(ext)
+	if b == "" || len(e) <= len(b) {
+		return false
+	}
+	if !strings.EqualFold(e[:len(b)], b) {
+		return false
+	}
+	rest := strings.TrimSpace(e[len(b):])
+	if rest == "" {
+		return false
+	}
+	switch []rune(rest)[0] {
+	case '-', ':', '–', '—':
+		return true
+	default:
+		return false
+	}
+}
+
+func (g *grouper) foldSeasonExtensions(rows []groupedRow, parentRel string) []groupedRow {
+	if len(rows) < 2 {
+		return rows
+	}
+	baseOf := make([]int, len(rows))
+	for i := range baseOf {
+		baseOf[i] = -1
+	}
+	for i := range rows {
+		bi := filepath.Base(rows[i].path)
+		for j := range rows {
+			if i == j {
+				continue
+			}
+			bj := filepath.Base(rows[j].path)
+			if !isDashExtensionName(bi, bj) {
+				continue
+			}
+			if baseOf[j] < 0 || len(bi) < len(filepath.Base(rows[baseOf[j]].path)) {
+				baseOf[j] = i
+			}
+		}
+	}
+	drop := map[int]bool{}
+	widen := map[int]bool{}
+	for j, i := range baseOf {
+		if i < 0 {
+			continue
+		}
+		seen := map[int]bool{}
+		for i >= 0 && !seen[i] {
+			seen[i] = true
+			if baseOf[i] < 0 {
+				break
+			}
+			i = baseOf[i]
+		}
+		if i < 0 {
+			continue
+		}
+		drop[j] = true
+		widen[i] = true
+	}
+	if len(drop) == 0 {
+		return rows
+	}
+	out := make([]groupedRow, 0, len(rows)-len(drop))
+	for i, r := range rows {
+		if drop[i] {
+			continue
+		}
+		if widen[i] {
+			r.path = parentRel
+		}
+		out = append(out, r)
+	}
+	return out
 }
 
 func (g *grouper) namedDir(absP, name, walkRoot string, years map[string]bool, pathRel string) []groupedRow {

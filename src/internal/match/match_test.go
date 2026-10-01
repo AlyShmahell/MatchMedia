@@ -354,6 +354,16 @@ func TestAutoMatchUniqueQueryCov(t *testing.T) {
 	}, nil); ok {
 		t.Fatal("same title different years should stay manual")
 	}
+	if _, ok := autoMatch(cfg, Job{Title: "Sidonia no Kishi Daikyuu Wakusei Sen'eki"}, []Candidate{
+		{Title: "Sidonia no Kishi", Score: 0.55, Jaccard: 0.55, QueryCov: 1},
+	}, nil); ok {
+		t.Fatal("shorter series below min_score should not match")
+	}
+	if _, ok := autoMatch(cfg, Job{Title: "Kobayashi-san Chi no OO Dragon"}, []Candidate{
+		{Title: "Miss Kobayashi's Dragon Maid", Score: 0.39, Jaccard: 0.39, QueryCov: 1},
+	}, nil); ok {
+		t.Fatal("sibling show below min_score should not match")
+	}
 }
 
 func TestPreferCandidatesUntypedKeepsAll(t *testing.T) {
