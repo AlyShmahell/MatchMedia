@@ -40,4 +40,3 @@ src/.env
 .vscode/
 secrets
 **/secrets
-experiments
