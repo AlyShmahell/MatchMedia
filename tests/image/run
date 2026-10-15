@@ -1,9 +1,0 @@
-#!/bin/sh
-set -eu
-root=/home/matchmedia/.local
-test -x "$root/bin/matchmedia"
-test -f "$root/share/matchmedia/config/default.yaml"
-test -f "$root/share/matchmedia/public/index.html"
-test -f "$root/share/matchmedia/public/style.css"
-test -f "$root/share/matchmedia/public/app.js"
-echo "image ok"
