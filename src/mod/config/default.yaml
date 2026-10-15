@@ -1,0 +1,82 @@
+http:
+  timeout_ms: 60000
+  retries: 5
+  backoff:
+    min_exp: 10
+    max_exp: 13
+  provider_timeout_ms: 10000
+version: "0.1.0"
+match:
+  min_score: 0.72
+  min_margin: 0.04
+  min_hits: 1
+  workers: 8
+  cooldown_fails: 5
+  cooldown:
+    min_exp: 16
+    max_exp: 19
+  prefer:
+    anime:
+      language: Japanese
+      kind: Animation
+  title_lift: 0.15
+  exact_lift: 0.25
+  plot_stop: [a, an, the, of, to, in, on, at, is, and, or, my, i, this, that, for, with, from, as, by]
+  synopsis_limit: 4000
+group:
+  parent_weight: 1
+  distance_threshold: 0.49
+  video_ext: [mkv, mp4, avi, m4v, ts, m2ts]
+  season_pattern: '(?i)^(season\s*\d+|ovas?|specials?|movies?|others?|extras?|s\d{1,2})$'
+ingest:
+  seq_threshold: 0.72
+  sample_rows: 3
+  aliases:
+    mediatype: type
+    seasonnumber: season
+    episodenumber: episode
+    imdbid: imdb
+  types:
+    tv: tv
+    anime: anime
+    movie: movie
+    series: tv
+    episode: tv
+    season: tv
+    film: movie
+providers:
+  tmdb:
+    api_key: ""
+    defer: true
+    base: "https://api.themoviedb.org/3"
+    query: { api_key: "{api_key}", query: "{title}", include_adult: "false" }
+    items: results
+    year: prefix4
+    poster_prefix: "https://image.tmdb.org/t/p/w185"
+    movie:
+      types: [movie, anime]
+      url: "{base}/search/movie"
+      fields: { id: id, title: title, year: release_date, url: id, synopsis: overview, poster: poster_path }
+      url_prefix: "https://www.themoviedb.org/movie/"
+      nfo: movie
+      uniqueid: tmdb-movie
+    tv:
+      types: [tv, anime]
+      url: "{base}/search/tv"
+      fields: { id: id, title: name, year: first_air_date, url: id, synopsis: overview, poster: poster_path }
+      url_prefix: "https://www.themoviedb.org/tv/"
+      nfo: tvshow
+      uniqueid: tmdb-tv
+      catalog:
+        seasons:
+          url: "{base}/tv/{id}"
+          query: { api_key: "{api_key}" }
+          items: seasons
+          fields: { id: id, number: season_number, title: name, synopsis: overview, poster: poster_path }
+          poster_prefix: "https://image.tmdb.org/t/p/w185"
+        episodes:
+          url: "{base}/tv/{id}/season/{season}"
+          query: { api_key: "{api_key}" }
+          items: episodes
+          fields: { id: id, number: episode_number, title: name, synopsis: overview, poster: still_path }
+          poster_prefix: "https://image.tmdb.org/t/p/w185"

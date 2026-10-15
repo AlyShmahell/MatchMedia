@@ -1,0 +1,9 @@
+# syntax=docker/dockerfile:1
+FROM docker.io/library/golang:1.26-bookworm
+WORKDIR /src
+COPY go.mod go.sum ./
+COPY cmd ./cmd
+COPY mod ./mod
+ENV CGO_ENABLED=0 GOFLAGS=-buildvcs=false
+RUN go mod tidy && go build -ldflags="-s -w" -o /usr/local/bin/matchmedia ./cmd
+ENTRYPOINT ["/usr/local/bin/matchmedia"]

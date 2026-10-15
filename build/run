@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+# Build the image, run it, or pack the binary.
+set -euo pipefail
+DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$DIR"
+IMAGE=localhost/matchmedia:dev
+
+compose() {
+  if command -v podman-compose >/dev/null 2>&1; then
+    podman-compose -f compose.yaml "$@"
+  elif command -v podman >/dev/null 2>&1 && podman compose version >/dev/null 2>&1; then
+    podman compose -f compose.yaml "$@"
+  elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    docker compose -f compose.yaml "$@"
+  else
+    echo "error: need podman-compose, podman compose, or docker compose" >&2
+    exit 1
+  fi
+}
+
+engine() {
+  if command -v podman >/dev/null 2>&1; then
+    echo podman
+  elif command -v docker >/dev/null 2>&1; then
+    echo docker
+  else
+    echo "error: need podman or docker" >&2
+    exit 1
+  fi
+}
+
+rebuild() {
+  # Buildah globs '*' in the host path (*Media). Feed a tar from /tmp instead.
+  local src cf
+  src="$(mktemp -d)"
+  cf="$(mktemp)"
+  cp -a "$DIR/../src/." "$src/"
+  cp "$DIR/../LICENSE" "$src/cmd/LICENSE"
+  cp "$DIR/../docs/logo.png" "$src/cmd/logo.png"
+  cp "$DIR/../docs/tmdb-attribution.md" "$src/cmd/tmdb-attribution.md"
+  cp "$DIR/Containerfile" "$cf"
+  tar -C "$src" -cf - . | "$(engine)" build --pull=always -f "$cf" -t "$IMAGE" -
+  rm -rf "$src" "$cf"
+}
+
+start() {
+  local xdg="$DIR/cache/xdg"
+  mkdir -p "$xdg/.local/share/matchmedia/config" \
+    "$xdg/.local/share/matchmedia/catalog" \
+    "$xdg/.local/state/matchmedia" \
+    "$xdg/.cache" \
+    "$xdg/Videos"
+  if ! "$(engine)" image inspect "$IMAGE" >/dev/null 2>&1; then
+    rebuild
+  fi
+  compose up --force-recreate --abort-on-container-exit app
+}
+
+extract_dist() {
+  local ctr
+  ctr="$("$(engine)" create "$IMAGE")"
+  mkdir -p "$DIR/dist/.local/bin"
+  : >"$DIR/dist/.gitkeep"
+  "$(engine)" cp "$ctr:/usr/local/bin/matchmedia" "$DIR/dist/.local/bin/matchmedia"
+  "$(engine)" rm "$ctr"
+  chmod a+x "$DIR/dist/.local/bin/matchmedia"
+}
+
+stage_package() {
+  local staging="$1"
+  mkdir -p "$staging/matchmedia"
+  cp -a "$DIR/dist"/. "$staging/matchmedia/"
+  rm -f "$staging/matchmedia/.gitkeep"
+}
+
+write_tar() {
+  local staging="$1" out="$2"
+  mkdir -p "$(dirname "$out")"
+  tar -C "$staging" -czf "$out" matchmedia
+  echo "wrote $out"
+}
+
+package() {
+  rm -rf "$DIR/dist"
+  mkdir -p "$DIR/dist" "$DIR/package"
+  : >"$DIR/dist/.gitkeep"
+  : >"$DIR/package/.gitkeep"
+  extract_dist
+  local version staging os arch outdir
+  os=linux
+  arch=amd64
+  version="$(awk -F'"' '/^version:/{print $2; exit}' "$DIR/../src/mod/config/default.yaml")"
+  if [[ -z "$version" ]]; then
+    echo "error: version missing from src/mod/config/default.yaml" >&2
+    exit 1
+  fi
+  staging="$(mktemp -d)"
+  stage_package "$staging"
+  outdir="$DIR/package/matchmedia-${version}-${os}-${arch}"
+  write_tar "$staging" "$outdir/matchmedia-${os}-${arch}.tar.gz"
+  rm -rf "$staging"
+}
+
+# Arrow/enter menu. Sets CHOICE to the 0-based index.
+menu() {
+  if [[ ! -t 0 || ! -t 1 ]]; then
+    echo "error: stdin/stdout must be a TTY" >&2
+    exit 1
+  fi
+  local opts=("$@")
+  local n=${#opts[@]}
+  local i=0
+  local key rest j
+  printf '\e[?25l'
+  restore() { printf '\e[?25h\e[0m'; }
+  trap restore EXIT
+  draw() {
+    for j in "${!opts[@]}"; do
+      if (( j == i )); then
+        printf '\e[7m> %s\e[0m\n' "${opts[j]}"
+      else
+        printf '  %s\n' "${opts[j]}"
+      fi
+    done
+  }
+  draw
+  while true; do
+    IFS= read -rsn1 key
+    rest=""
+    if [[ $key == $'\e' ]]; then
+      IFS= read -rsn2 -t 0.1 rest || rest=""
+      key+="$rest"
+    fi
+    case "$key" in
+      $'\e[A')
+        i=$(( (i - 1 + n) % n ))
+        ;;
+      $'\e[B')
+        i=$(( (i + 1) % n ))
+        ;;
+      "")
+        printf '\e[%dA' "$n"
+        for j in "${!opts[@]}"; do
+          printf '\e[2K\n'
+        done
+        printf '\e[%dA' "$n"
+        restore
+        trap - EXIT
+        CHOICE=$i
+        return 0
+        ;;
+      *)
+        continue
+        ;;
+    esac
+    printf '\e[%dA' "$n"
+    draw
+  done
+}
+
+CHOICE=
+menu "run" "(re)build & run" "(re)build & package"
+case "$CHOICE" in
+  0)
+    start
+    ;;
+  1)
+    rebuild
+    start
+    ;;
+  2)
+    rebuild
+    package
+    ;;
+esac

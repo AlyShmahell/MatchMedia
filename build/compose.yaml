@@ -1,0 +1,13 @@
+services:
+  app:
+    image: localhost/matchmedia:dev
+    security_opt:
+      - label=disable
+    volumes:
+      - ./cache/xdg:/home/matchmedia:z
+      - /mnt:/mnt
+      - /media:/media
+    network_mode: host
+    environment:
+      HOME: /home/matchmedia
+    working_dir: /home/matchmedia
