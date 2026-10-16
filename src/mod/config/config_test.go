@@ -15,29 +15,55 @@ func TestNewShippedTMDB(t *testing.T) {
 		t.Fatalf("threshold %v", cfg.Group.DistanceThreshold)
 	}
 	eps := cfg.Endpoints()
-	if len(eps) != 2 {
-		t.Fatalf("want movie and tv endpoints, got %d", len(eps))
+	if len(eps) != 4 {
+		t.Fatalf("want tmdb movie/tv, omdb, tvmaze, got %d", len(eps))
 	}
-	var movie, tv bool
+	var movie, tv, omdb, tvmaze bool
 	for _, ep := range eps {
-		if ep.Name != "tmdb" {
+		switch ep.Name {
+		case "tmdb":
+			if ep.Spec.Use != UsePrimary {
+				t.Fatalf("tmdb use %s", ep.Spec.Use)
+			}
+			switch ep.Spec.NFO {
+			case "movie":
+				movie = true
+				if ep.Spec.UniqueID != "tmdb-movie" {
+					t.Fatalf("movie uniqueid %s", ep.Spec.UniqueID)
+				}
+			case "tvshow":
+				tv = true
+				if ep.Spec.Catalog == nil {
+					t.Fatal("tv catalog missing")
+				}
+			}
+		case "omdb":
+			omdb = true
+			if ep.Spec.Use != UseDefer {
+				t.Fatalf("omdb use %s", ep.Spec.Use)
+			}
+		case "tvmaze":
+			tvmaze = true
+			if ep.Spec.Use != UseFallback {
+				t.Fatalf("tvmaze use %s", ep.Spec.Use)
+			}
+		default:
 			t.Fatalf("provider %s", ep.Name)
 		}
-		switch ep.Spec.NFO {
-		case "movie":
-			movie = true
-			if ep.Spec.UniqueID != "tmdb-movie" {
-				t.Fatalf("movie uniqueid %s", ep.Spec.UniqueID)
-			}
-		case "tvshow":
-			tv = true
-			if ep.Spec.Catalog == nil {
-				t.Fatal("tv catalog missing")
-			}
-		}
 	}
-	if !movie || !tv {
-		t.Fatal("need movie and tv")
+	if !movie || !tv || !omdb || !tvmaze {
+		t.Fatal("need tmdb movie/tv, omdb, tvmaze")
+	}
+}
+
+func TestInvalidUse(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "overlay.yaml")
+	if err := os.WriteFile(path, []byte("providers:\n  tmdb:\n    use: later\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(path); err == nil {
+		t.Fatal("want use error")
 	}
 }
 
@@ -58,6 +84,9 @@ func TestOverlayWins(t *testing.T) {
 		t.Fatalf("api_key %q", cfg.Providers["tmdb"].APIKey)
 	}
 	for _, ep := range cfg.Endpoints() {
+		if ep.Name != "tmdb" {
+			continue
+		}
 		if ep.Spec.APIKey != "testkey" {
 			t.Fatalf("endpoint key %q", ep.Spec.APIKey)
 		}

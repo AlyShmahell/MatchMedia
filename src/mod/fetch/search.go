@@ -20,33 +20,57 @@ type Client struct {
 }
 
 func New(cfg *config.Config) *Client {
-	return &Client{cfg: cfg, http: newHTTP(cfg), cool: NewCircuit(), cache: newMemo()}
+	cool := NewCircuit()
+	return &Client{cfg: cfg, http: newHTTP(cfg, cool), cool: cool, cache: newMemo()}
 }
 
-func (c *Client) Search(ctx context.Context, q rank.Query, deferred bool) ([]rank.Hit, []string, int) {
-	return c.collect(ctx, q, true, deferred)
+func (c *Client) trip(key string) {
+	if c == nil || c.cfg == nil {
+		return
+	}
+	cd := c.cfg.HTTP.Cooldown
+	c.cool.Fail(key, cd.Fails, cd.MinMS, cd.MaxMS)
 }
 
-func (c *Client) SearchOther(ctx context.Context, q rank.Query, deferred bool) ([]rank.Hit, []string, int) {
-	return c.collect(ctx, q, false, deferred)
+func (c *Client) Search(ctx context.Context, q rank.Query) ([]rank.Hit, []string, int) {
+	return c.collect(ctx, q, true)
 }
 
-func (c *Client) collect(ctx context.Context, q rank.Query, wantedOnly, deferred bool) ([]rank.Hit, []string, int) {
-	v := c.cache.doSearch(searchKey(q, wantedOnly, deferred), func() searchVal {
-		hits, errs, ok := c.collectUncached(ctx, q, wantedOnly, deferred)
+func (c *Client) SearchOther(ctx context.Context, q rank.Query) ([]rank.Hit, []string, int) {
+	return c.collect(ctx, q, false)
+}
+
+func (c *Client) collect(ctx context.Context, q rank.Query, wantedOnly bool) ([]rank.Hit, []string, int) {
+	v := c.cache.doSearch(searchKey(q, wantedOnly), func() searchVal {
+		hits, errs, ok := c.collectWaves(ctx, q, wantedOnly)
 		return searchVal{hits: hits, errs: errs, ok: ok}
 	})
 	return v.hits, v.errs, v.ok
 }
 
-func (c *Client) collectUncached(ctx context.Context, q rank.Query, wantedOnly, deferred bool) ([]rank.Hit, []string, int) {
+func (c *Client) collectWaves(ctx context.Context, q rank.Query, wantedOnly bool) ([]rank.Hit, []string, int) {
+	hits, errs, ok := c.collectUncached(ctx, q, wantedOnly, config.UsePrimary)
+	h2, e2, o2 := c.collectUncached(ctx, q, wantedOnly, config.UseDefer)
+	hits = append(hits, h2...)
+	errs = append(errs, e2...)
+	ok += o2
+	if ok == 0 {
+		h3, e3, o3 := c.collectUncached(ctx, q, wantedOnly, config.UseFallback)
+		hits = append(hits, h3...)
+		errs = append(errs, e3...)
+		ok += o3
+	}
+	return hits, errs, ok
+}
+
+func (c *Client) collectUncached(ctx context.Context, q rank.Query, wantedOnly bool, use string) ([]rank.Hit, []string, int) {
 	type task struct {
 		name string
 		spec config.Provider
 	}
 	var tasks []task
 	for _, ep := range c.cfg.Endpoints() {
-		if ep.Spec.Defer != deferred {
+		if providerUse(ep.Spec) != use {
 			continue
 		}
 		wanted := providerWanted(ep.Spec, q.Type)
@@ -71,8 +95,6 @@ func (c *Client) collectUncached(ctx context.Context, q rank.Query, wantedOnly, 
 		errs []string
 		ok   int
 	)
-	fails := c.cfg.Match.CooldownFails
-	cr := c.cfg.Match.Cooldown
 	wg.Add(len(tasks))
 	for _, t := range tasks {
 		go func(name string, spec config.Provider) {
@@ -88,9 +110,6 @@ func (c *Client) collectUncached(ctx context.Context, q rank.Query, wantedOnly, 
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
-				if ctx.Err() == nil {
-					c.cool.Fail(key, fails, cr.MinExp, cr.MaxExp)
-				}
 				errs = append(errs, name+": "+err.Error())
 				return
 			}
@@ -110,6 +129,13 @@ func endpointKey(name string, spec config.Provider) string {
 	return name
 }
 
+func providerUse(spec config.Provider) string {
+	if spec.Use == "" {
+		return config.UsePrimary
+	}
+	return spec.Use
+}
+
 func providerWanted(spec config.Provider, jobType string) bool {
 	if jobType == "" || len(spec.Types) == 0 {
 		return true
@@ -123,14 +149,16 @@ func providerWanted(spec config.Provider, jobType string) bool {
 }
 
 func (c *Client) searchEndpoint(ctx context.Context, name string, spec config.Provider, q rank.Query) ([]rank.Hit, error) {
-	raw, err := providerGET(ctx, c.http.forSpec(spec), spec.URL, spec.Query, varsFor(spec, q, ""), func(ctx context.Context) error {
-		return paceProvider(ctx, endpointKey(name, spec), spec.MinIntervalMS)
+	key := endpointKey(name, spec)
+	raw, err := providerGET(ctx, c.http.forSpec(spec), spec.URL, spec.Query, varsFor(spec, q, ""), key, func(ctx context.Context) error {
+		return paceProvider(ctx, key, spec.MinIntervalMS)
 	})
 	if err != nil {
 		return nil, err
 	}
 	items, err := extractItems(raw, spec.Items)
 	if err != nil {
+		c.trip(key)
 		return nil, err
 	}
 	out := make([]rank.Hit, 0, len(items))
@@ -174,7 +202,7 @@ func (c *Client) hydrateTitles(ctx context.Context, name string, spec config.Pro
 
 func (c *Client) fetchTitleAkas(ctx context.Context, name string, spec config.Provider, q rank.Query, cand *rank.Hit, jobContent map[string]struct{}, stop map[string]struct{}) error {
 	tl := spec.Titles
-	raw, err := providerGET(ctx, c.http.forSpec(spec), tl.URL, tl.Query, varsFor(spec, q, cand.ID), func(ctx context.Context) error {
+	raw, err := providerGET(ctx, c.http.forSpec(spec), tl.URL, tl.Query, varsFor(spec, q, cand.ID), endpointKey(name, spec), func(ctx context.Context) error {
 		return paceProvider(ctx, endpointKey(name, spec), spec.MinIntervalMS)
 	})
 	if err != nil {
@@ -225,7 +253,7 @@ func (c *Client) Detail(ctx context.Context, q rank.Query, cand *rank.Hit) {
 		if err := paceProvider(ctx, endpointKey(cand.Provider, spec), spec.MinIntervalMS); err != nil {
 			return src, false
 		}
-		raw, err := providerGET(ctx, c.http.forSpec(spec), spec.Detail.URL, spec.Detail.Query, varsFor(spec, q, cand.ID), nil)
+		raw, err := providerGET(ctx, c.http.forSpec(spec), spec.Detail.URL, spec.Detail.Query, varsFor(spec, q, cand.ID), endpointKey(cand.Provider, spec), nil)
 		if err != nil {
 			return src, false
 		}

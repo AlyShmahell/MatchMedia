@@ -15,15 +15,15 @@ curl -fL https://github.com/alyshmahell/matchmedia/releases/latest/download/matc
   | tar -xz -C "$HOME" --strip-components=1 matchmedia/.local
 ```
 
-This unpacks `.local/bin/matchmedia` under `$HOME`.
+This unpacks `.local/bin/matchmedia` under `$HOME`.  
+Open a new terminal for the binary to get picked up by $PATH.
 
 ## Run as a CLI
 
 ```bash
-matchmedia -path /media/Shows -mode nfo
+matchmedia -help
 ```
 
-`-save` writes NFO and posters next to the media.
 
 | Flag | Meaning |
 | --- | --- |
@@ -81,4 +81,11 @@ For grouping, ranking, scan modes, TMDB YAML, and the rest of the CLI, see [docs
 
 </div>
 
+#### TVmaze
 
+This product uses the [TVmaze API (CC BY-SA)](https://www.tvmaze.com/).
+
+
+#### OMDb
+
+This product uses the [OMDb API](https://www.omdbapi.com/).

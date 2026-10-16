@@ -2,9 +2,63 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/alyshmahell/matchmedia/src/mod/match"
 )
+
+func TestTallyFoldedJobs(t *testing.T) {
+	check := func(t *testing.T, jobs []match.Job, wantMatched, wantUnmatched int) {
+		t.Helper()
+		matched, manual, unmatched, errored := tally(jobs)
+		if matched != wantMatched || manual != 0 || unmatched != wantUnmatched || errored != 0 {
+			t.Fatalf("tally matched=%d manual=%d unmatched=%d error=%d", matched, manual, unmatched, errored)
+		}
+		got := renderReport(jobs)
+		want := fmt.Sprintf("jobs: %d · ✅ matched: %d · ✋ manual: %d · ❌ unmatched: %d · 💥 error: %d",
+			len(jobs), matched, manual, unmatched, errored)
+		if !strings.Contains(got, want) {
+			t.Fatalf("report counts %q missing in:\n%s", want, got)
+		}
+	}
+	parent := match.Job{
+		Title:  "Show",
+		Status: "matched",
+		Kind:   "show",
+		Match:  &match.Candidate{Title: "Show", ID: "1"},
+		Files:  []match.JobFile{{Path: "s01.mkv"}},
+	}
+	t.Run("dropped child", func(t *testing.T) {
+		check(t, []match.Job{parent}, 1, 0)
+	})
+	t.Run("leftover unmatched", func(t *testing.T) {
+		check(t, []match.Job{parent, {
+			Title:  "Leftover",
+			Status: "unmatched",
+			Kind:   "movie",
+			Files:  []match.JobFile{{Path: "x.mkv"}},
+		}}, 1, 1)
+	})
+}
+
+func TestLiveCountsFrom(t *testing.T) {
+	var matched, manual, unmatched, errored int
+	liveCountsFrom(match.Job{Title: "S01", Parent: "Show", Status: "unmatched"}, &matched, &manual, &unmatched, &errored)
+	liveCountsFrom(match.Job{Title: "S02", Parent: "Show", Status: "error"}, &matched, &manual, &unmatched, &errored)
+	if unmatched != 0 || errored != 0 {
+		t.Fatalf("child fail counted unmatched=%d error=%d", unmatched, errored)
+	}
+	liveCountsFrom(match.Job{Title: "S01", Parent: "Show", Status: "matched"}, &matched, &manual, &unmatched, &errored)
+	if matched != 1 {
+		t.Fatalf("matched child %d", matched)
+	}
+	liveCountsFrom(match.Job{Title: "Leftover", Status: "unmatched"}, &matched, &manual, &unmatched, &errored)
+	if unmatched != 1 {
+		t.Fatalf("title unmatched %d", unmatched)
+	}
+}
 
 func TestRenderProgressPlain(t *testing.T) {
 	got := render(snapshot{
@@ -102,6 +156,20 @@ func TestLogoNoColor(t *testing.T) {
 
 func TestRenderLogoHalfBlock(t *testing.T) {
 	img, err := decodeLogo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := renderLogo(img)
+	if !strings.Contains(got, "\x1b[38;2;") {
+		t.Fatalf("missing truecolor: %q", got[:min(80, len(got))])
+	}
+	if !strings.Contains(got, "▀") {
+		t.Fatal("missing half-block")
+	}
+}
+
+func TestRenderKofiHalfBlock(t *testing.T) {
+	img, err := decodeKofi()
 	if err != nil {
 		t.Fatal(err)
 	}

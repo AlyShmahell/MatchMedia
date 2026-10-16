@@ -115,11 +115,17 @@ func (c *Client) fetchCatalogList(ctx context.Context, name string, spec config.
 	v := varsFor(spec, q, showID)
 	v["season"] = season
 	v["season_id"] = seasonID
-	raw, err := providerGET(ctx, c.http.forSpec(spec), list.URL, list.Query, v, nil)
+	key := endpointKey(name, spec)
+	raw, err := providerGET(ctx, c.http.forSpec(spec), list.URL, list.Query, v, key, nil)
 	if err != nil {
 		return nil, err
 	}
-	return extractItems(raw, list.Items)
+	items, err := extractItems(raw, list.Items)
+	if err != nil {
+		c.trip(key)
+		return nil, err
+	}
+	return items, nil
 }
 
 func perSeasonURL(u string) bool {

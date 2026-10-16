@@ -45,8 +45,8 @@ func newMemo() *memo {
 	}
 }
 
-func searchKey(q rank.Query, wantedOnly, deferred bool) string {
-	return rank.TitleNorm(q.Title) + "\t" + q.Year + "\t" + q.Type + "\t" + strconv.FormatBool(deferred) + "\t" + strconv.FormatBool(wantedOnly)
+func searchKey(q rank.Query, wantedOnly bool) string {
+	return rank.TitleNorm(q.Title) + "\t" + q.Year + "\t" + q.Type + "\t" + strconv.FormatBool(wantedOnly)
 }
 
 func idKey(provider, id string) string {

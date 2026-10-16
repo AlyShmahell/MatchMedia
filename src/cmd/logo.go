@@ -10,7 +10,15 @@ import (
 )
 
 func decodeLogo() (image.Image, error) {
-	return png.Decode(bytes.NewReader(logoPNG))
+	return decodePNG(logoPNG)
+}
+
+func decodeKofi() (image.Image, error) {
+	return decodePNG(kofiPNG)
+}
+
+func decodePNG(b []byte) (image.Image, error) {
+	return png.Decode(bytes.NewReader(b))
 }
 
 func renderLogo(img image.Image) string {

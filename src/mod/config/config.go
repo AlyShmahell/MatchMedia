@@ -44,10 +44,17 @@ type Ingest struct {
 }
 
 type HTTP struct {
-	TimeoutMS         int      `yaml:"timeout_ms"`
-	Retries           int      `yaml:"retries"`
-	Backoff           ExpRange `yaml:"backoff"`
-	ProviderTimeoutMS int      `yaml:"provider_timeout_ms"`
+	DeadlineMS int      `yaml:"deadline_ms"`
+	Retries    int      `yaml:"retries"`
+	Backoff    MSRange  `yaml:"backoff"`
+	AttemptMS  int      `yaml:"attempt_ms"`
+	Cooldown   Cooldown `yaml:"cooldown"`
+}
+
+type Cooldown struct {
+	Fails int `yaml:"fails"`
+	MinMS int `yaml:"min_ms"`
+	MaxMS int `yaml:"max_ms"`
 }
 
 type Match struct {
@@ -55,8 +62,6 @@ type Match struct {
 	MinMargin     float64                      `yaml:"min_margin"`
 	MinHits       int                          `yaml:"min_hits"`
 	Workers       int                          `yaml:"workers"`
-	CooldownFails int                          `yaml:"cooldown_fails"`
-	Cooldown      ExpRange                     `yaml:"cooldown"`
 	Prefer        map[string]map[string]string `yaml:"prefer"`
 	PlotStop      []string                     `yaml:"plot_stop"`
 	TitleLift     float64                      `yaml:"title_lift"`
@@ -64,9 +69,9 @@ type Match struct {
 	SynopsisLimit int                          `yaml:"synopsis_limit"`
 }
 
-type ExpRange struct {
-	MinExp int `yaml:"min_exp"`
-	MaxExp int `yaml:"max_exp"`
+type MSRange struct {
+	MinMS int `yaml:"min_ms"`
+	MaxMS int `yaml:"max_ms"`
 }
 
 type Provider struct {
@@ -84,8 +89,8 @@ type Provider struct {
 	PosterPrefix      string            `yaml:"poster_prefix"`
 	MinIntervalMS     int               `yaml:"min_interval_ms"`
 	Retries           int               `yaml:"retries"`
-	ProviderTimeoutMS int               `yaml:"provider_timeout_ms"`
-	Defer             bool              `yaml:"defer"`
+	AttemptMS         int               `yaml:"attempt_ms"`
+	Use               string            `yaml:"use"`
 	TypeParams        map[string]string `yaml:"type_params"`
 	NFO               string            `yaml:"nfo"`
 	UniqueID          string            `yaml:"uniqueid"`
@@ -126,6 +131,12 @@ type Titles struct {
 	Fields map[string]string `yaml:"fields"`
 	Max    int               `yaml:"max"`
 }
+
+const (
+	UsePrimary  = "primary"
+	UseDefer    = "defer"
+	UseFallback = "fallback"
+)
 
 type Endpoint struct {
 	Name string
@@ -274,8 +285,14 @@ func inherit(parent, child Provider, defaultNFO string) Provider {
 	if child.Retries > 0 {
 		out.Retries = child.Retries
 	}
-	if child.ProviderTimeoutMS > 0 {
-		out.ProviderTimeoutMS = child.ProviderTimeoutMS
+	if child.AttemptMS > 0 {
+		out.AttemptMS = child.AttemptMS
+	}
+	if child.Use != "" {
+		out.Use = child.Use
+	}
+	if out.Use == "" {
+		out.Use = UsePrimary
 	}
 	return out
 }
@@ -284,16 +301,22 @@ func Validate(c Config) error {
 	if strings.TrimSpace(c.Version) == "" {
 		return fmt.Errorf("version is empty")
 	}
-	if c.HTTP.TimeoutMS <= 0 {
-		return fmt.Errorf("http.timeout_ms must be > 0")
+	if c.HTTP.DeadlineMS <= 0 {
+		return fmt.Errorf("http.deadline_ms must be > 0")
 	}
 	if c.HTTP.Retries <= 0 {
 		return fmt.Errorf("http.retries must be > 0")
 	}
-	if c.HTTP.ProviderTimeoutMS <= 0 {
-		return fmt.Errorf("http.provider_timeout_ms must be > 0")
+	if c.HTTP.AttemptMS <= 0 {
+		return fmt.Errorf("http.attempt_ms must be > 0")
 	}
-	if err := validateExp("http.backoff", c.HTTP.Backoff); err != nil {
+	if err := validateMS("http.backoff", c.HTTP.Backoff); err != nil {
+		return err
+	}
+	if c.HTTP.Cooldown.Fails < 0 {
+		return fmt.Errorf("http.cooldown.fails must be >= 0")
+	}
+	if err := validateMS("http.cooldown", MSRange{MinMS: c.HTTP.Cooldown.MinMS, MaxMS: c.HTTP.Cooldown.MaxMS}); err != nil {
 		return err
 	}
 	if c.Match.SynopsisLimit <= 0 {
@@ -310,12 +333,6 @@ func Validate(c Config) error {
 	}
 	if c.Match.Workers < 1 {
 		return fmt.Errorf("match.workers must be >= 1")
-	}
-	if c.Match.CooldownFails < 0 {
-		return fmt.Errorf("match.cooldown_fails must be >= 0")
-	}
-	if err := validateExp("match.cooldown", c.Match.Cooldown); err != nil {
-		return err
 	}
 	if len(wordList(c.Match.PlotStop)) == 0 {
 		return fmt.Errorf("match.plot_stop is empty")
@@ -347,15 +364,46 @@ func Validate(c Config) error {
 	if c.Ingest.SampleRows < 1 {
 		return fmt.Errorf("ingest.sample_rows must be >= 1")
 	}
+	for name, spec := range c.Providers {
+		if err := validateProviderUse(name, spec); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
-func validateExp(name string, r ExpRange) error {
-	if r.MinExp < 0 {
-		return fmt.Errorf("%s.min_exp must be >= 0", name)
+func validateProviderUse(name string, spec Provider) error {
+	if err := checkUse(name, spec.Use); err != nil {
+		return err
 	}
-	if r.MaxExp < r.MinExp+2 {
-		return fmt.Errorf("%s.max_exp must be >= min_exp+2", name)
+	if spec.Movie != nil {
+		if err := checkUse(name+".movie", spec.Movie.Use); err != nil {
+			return err
+		}
+	}
+	if spec.TV != nil {
+		if err := checkUse(name+".tv", spec.TV.Use); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func checkUse(name, use string) error {
+	switch use {
+	case "", UsePrimary, UseDefer, UseFallback:
+		return nil
+	default:
+		return fmt.Errorf("providers.%s.use %q is not primary, defer, or fallback", name, use)
+	}
+}
+
+func validateMS(name string, r MSRange) error {
+	if r.MinMS <= 0 {
+		return fmt.Errorf("%s.min_ms must be > 0", name)
+	}
+	if r.MaxMS < r.MinMS {
+		return fmt.Errorf("%s.max_ms must be >= min_ms", name)
 	}
 	return nil
 }
@@ -391,25 +439,24 @@ func (c Config) ExactLift() float64 {
 }
 
 func (c Config) HTTPTimeout() time.Duration {
-	return time.Duration(c.HTTP.TimeoutMS) * time.Millisecond
+	return time.Duration(c.HTTP.DeadlineMS) * time.Millisecond
 }
 
-func (c Config) ProviderTimeout() time.Duration {
-	return time.Duration(c.HTTP.ProviderTimeoutMS) * time.Millisecond
+func (c Config) AttemptTimeout() time.Duration {
+	return time.Duration(c.HTTP.AttemptMS) * time.Millisecond
 }
 
-func JitterExp(exp int) time.Duration {
-	if exp < 1 {
-		exp = 1
+func JitterMS(minMS, maxMS int) time.Duration {
+	if minMS < 1 {
+		minMS = 1
 	}
-	if exp > 62 {
-		exp = 62
+	if maxMS < minMS {
+		maxMS = minMS
 	}
-	lo := int64(1) << (exp - 1)
-	hi := int64(1) << exp
-	n := lo
-	if hi > lo {
-		n = lo + rand.Int64N(hi-lo+1)
+	n := int64(minMS)
+	span := int64(maxMS) - n
+	if span > 0 {
+		n += rand.Int64N(span + 1)
 	}
 	return time.Duration(n) * time.Millisecond
 }
@@ -522,5 +569,43 @@ func decode(b []byte) (Config, error) {
 	if err := yaml.Unmarshal(b, &cfg); err != nil {
 		return Config{}, err
 	}
+	for name, p := range cfg.Providers {
+		use, err := parseUse(p.Use)
+		if err != nil {
+			return Config{}, fmt.Errorf("providers.%s: %w", name, err)
+		}
+		if use == "" {
+			use = UsePrimary
+		}
+		p.Use = use
+		if p.Movie != nil {
+			u, err := parseUse(p.Movie.Use)
+			if err != nil {
+				return Config{}, fmt.Errorf("providers.%s.movie: %w", name, err)
+			}
+			p.Movie.Use = u
+		}
+		if p.TV != nil {
+			u, err := parseUse(p.TV.Use)
+			if err != nil {
+				return Config{}, fmt.Errorf("providers.%s.tv: %w", name, err)
+			}
+			p.TV.Use = u
+		}
+		cfg.Providers[name] = p
+	}
 	return cfg, nil
+}
+
+func parseUse(s string) (string, error) {
+	s = strings.TrimSpace(strings.ToLower(s))
+	if s == "" {
+		return "", nil
+	}
+	switch s {
+	case UsePrimary, UseDefer, UseFallback:
+		return s, nil
+	default:
+		return "", fmt.Errorf("use %q is not primary, defer, or fallback", s)
+	}
 }

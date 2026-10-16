@@ -26,11 +26,13 @@ Call `config.New(overlayPath)`.
 1. Load the shipped `default.yaml` that is embedded in `config`.
 2. If `overlayPath` is not empty, merge that YAML on top. Overlay keys win.
 
-Put the TMDB key in the overlay:
+Put the TMDB and OMDb keys in the overlay:
 
 ```yaml
 providers:
   tmdb:
+    api_key: YOUR_KEY
+  omdb:
     api_key: YOUR_KEY
 ```
 
@@ -94,15 +96,25 @@ Import `github.com/alyshmahell/matchmedia/src/mod/ingest`.
 
 Library callers do not write a report. Only the CLI writes markdown.
 
-## Fetch and TMDB
+## Fetch and providers
 
 `fetch` does not hard-code provider names. It expands YAML.
 
-Shipped YAML has one key `tmdb` with two children: `movie` and `tv`. Shared keys stay on the parent (`base`, `query`, `api_key`, `poster_prefix`). Kind-specific keys stay on the child (`url`, `fields`, `nfo`, `uniqueid`, `catalog`).
+Each provider has `use`:
 
-A future provider with one kind keeps `url` and `fields` on the parent. Omit `movie` and `tv`.
+- `primary` — first wave. Always searched. Omit `use` to get `primary`.
+- `defer` — second wave. Always searched after primary, even when primary returned hits.
+- `fallback` — third wave. Searched only when primary and defer together returned no hits.
 
-`Candidate.Provider` is `tmdb`. `nfo` and `uniqueid` come from the child that produced the hit.
+Shipped YAML:
+
+- `tmdb` (`primary`) has two children: `movie` and `tv`. Shared keys stay on the parent (`base`, `query`, `api_key`, `poster_prefix`). Kind-specific keys stay on the child (`url`, `fields`, `nfo`, `uniqueid`, `catalog`). Set `api_key` in overlay.
+- `omdb` (`defer`) is a movie provider. It needs `api_key` in overlay. An empty key skips the defer wave.
+- `tvmaze` (`fallback`) is a TV provider. It needs no key.
+
+A provider with one kind keeps `url` and `fields` on the parent. Omit `movie` and `tv`.
+
+`Candidate.Provider` is the YAML key (`tmdb`, `omdb`, `tvmaze`). `nfo` and `uniqueid` come from the spec that produced the hit.
 
 ## Sidecar
 
@@ -112,7 +124,7 @@ Scan modes read those same sidecar files.
 
 ## CLI
 
-Stage `LICENSE`, `docs/logo.png`, and `docs/tmdb-attribution.md` into `cmd` first (`go generate ./cmd` from `src`).
+Stage `LICENSE`, `docs/logo.png`, `docs/kofi.png`, and `docs/attribution.md` into `cmd` first (`go generate ./cmd` from `src`).
 
 From `src/cmd`:
 
@@ -139,7 +151,7 @@ Flags:
 | `-ingest` | CSV or JSON title list instead of `-path`. |
 | `-report` | Markdown report path. Default is `match.md`. |
 | `-save` | Write NFO and posters next to the media. Default is off. |
-| `-help` | Print the logo (TTY), then usage, license, and attribution, then exit. |
+| `-help` | Print the MatchMedia title, logo (TTY), usage, Support MatchMedia (Ko-fi link then QR), license, and attribution, then exit. |
 
 After match (and save when `-save` is set), the CLI writes the report and prints `wrote <path>` on stdout. It does not print one line per job. On a TTY it prints the logo, then one progress line per phase on stderr (scan, match, save, report); finished lines stay. The save line shows nfo, episode, and poster counts. Pipes and `NO_COLOR` hide color; a non-TTY hides the logo and the bar. It does not listen on a port.
 

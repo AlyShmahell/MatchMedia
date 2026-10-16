@@ -37,7 +37,8 @@ rebuild() {
   cp -a "$DIR/../src/." "$src/"
   cp "$DIR/../LICENSE" "$src/cmd/LICENSE"
   cp "$DIR/../docs/logo.png" "$src/cmd/logo.png"
-  cp "$DIR/../docs/tmdb-attribution.md" "$src/cmd/tmdb-attribution.md"
+  cp "$DIR/../docs/kofi.png" "$src/cmd/kofi.png"
+  cp "$DIR/../docs/attribution.md" "$src/cmd/attribution.md"
   cp "$DIR/Containerfile" "$cf"
   tar -C "$src" -cf - . | "$(engine)" build --pull=always -f "$cf" -t "$IMAGE" -
   rm -rf "$src" "$cf"

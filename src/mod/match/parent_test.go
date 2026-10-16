@@ -28,6 +28,24 @@ func showChildren() (Job, Job) {
 	return a, b
 }
 
+func TestChildFail(t *testing.T) {
+	if !ChildFail(Job{Title: "S01", Parent: "Show", Status: "unmatched"}) {
+		t.Fatal("unmatched season")
+	}
+	if !ChildFail(Job{Title: "S01", Parent: "Show", Status: "error"}) {
+		t.Fatal("error season")
+	}
+	if ChildFail(Job{Title: "Leftover", Status: "unmatched"}) {
+		t.Fatal("title-level unmatched")
+	}
+	if ChildFail(Job{Title: "Show", Parent: "Show", Status: "unmatched"}) {
+		t.Fatal("parent==title")
+	}
+	if ChildFail(Job{Title: "S01", Parent: "Show", Status: "matched"}) {
+		t.Fatal("matched child")
+	}
+}
+
 func TestParentJobsFirst(t *testing.T) {
 	a, b := showChildren()
 	got := parentJobs([]Job{a, b})

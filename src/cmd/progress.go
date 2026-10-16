@@ -229,6 +229,20 @@ func stripANSI(s string) string {
 	return b.String()
 }
 
+func tally(jobs []match.Job) (matched, manual, unmatched, errored int) {
+	for _, j := range jobs {
+		countsFrom(j, &matched, &manual, &unmatched, &errored)
+	}
+	return
+}
+
+func liveCountsFrom(job match.Job, matched, manual, unmatched, errored *int) {
+	if match.ChildFail(job) {
+		return
+	}
+	countsFrom(job, matched, manual, unmatched, errored)
+}
+
 func countsFrom(job match.Job, matched, manual, unmatched, errored *int) {
 	switch job.Status {
 	case "matched":

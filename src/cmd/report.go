@@ -21,19 +21,7 @@ func writeReport(path string, jobs []match.Job) error {
 }
 
 func renderReport(jobs []match.Job) string {
-	var matched, manual, unmatched, errored int
-	for _, j := range jobs {
-		switch j.Status {
-		case "matched":
-			matched++
-		case "manual":
-			manual++
-		case "unmatched":
-			unmatched++
-		case "error":
-			errored++
-		}
-	}
+	matched, manual, unmatched, errored := tally(jobs)
 
 	var b strings.Builder
 	b.WriteString("# MatchMedia\n\n")

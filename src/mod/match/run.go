@@ -103,17 +103,12 @@ func runOne(ctx context.Context, cfg *config.Config, client *fetch.Client, job J
 }
 
 func search(ctx context.Context, client *fetch.Client, q rank.Query, other bool) ([]Candidate, []string, int) {
-	fast, ferrs, fok := client.Search(ctx, q, false)
-	slow, serrs, sok := client.Search(ctx, q, true)
-	cands := append(append([]Candidate(nil), fast...), slow...)
-	errs := append(append([]string(nil), ferrs...), serrs...)
-	ok := fok + sok
+	cands, errs, ok := client.Search(ctx, q)
 	if len(cands) == 0 && other {
-		restFast, rferrs, rfok := client.SearchOther(ctx, q, false)
-		restSlow, rserrs, rsok := client.SearchOther(ctx, q, true)
-		cands = append(append([]Candidate(nil), restFast...), restSlow...)
-		errs = append(append(errs, rferrs...), rserrs...)
-		ok += rfok + rsok
+		rest, rerrs, rok := client.SearchOther(ctx, q)
+		cands = rest
+		errs = append(errs, rerrs...)
+		ok += rok
 	}
 	return cands, errs, ok
 }

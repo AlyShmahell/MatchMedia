@@ -77,7 +77,7 @@ func TestNgramFallbackSearch(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	overlay := filepath.Join(t.TempDir(), "overlay.yaml")
-	body := "providers:\n  tmdb:\n    api_key: k\n    base: " + srv.URL + "/3\n"
+	body := "providers:\n  tmdb:\n    api_key: k\n    base: " + srv.URL + "/3\n  tvmaze:\n    require: api_key\n"
 	if err := os.WriteFile(overlay, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}

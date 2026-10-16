@@ -11,6 +11,15 @@ func failedQuery(j Job) bool {
 	return j.Status == "unmatched" || j.Status == "error"
 }
 
+func isChild(j Job) bool {
+	p := strings.TrimSpace(j.Parent)
+	return p != "" && rank.TitleNorm(p) != rank.TitleNorm(j.Title)
+}
+
+func ChildFail(j Job) bool {
+	return failedQuery(j) && isChild(j)
+}
+
 func parentSucceeded(j Job) bool {
 	return j.Status == "matched" || j.Status == "manual"
 }
@@ -44,10 +53,10 @@ func parentJobs(jobs []Job) []Job {
 	groups := map[string]*group{}
 	var order []string
 	for _, j := range jobs {
-		p := strings.TrimSpace(j.Parent)
-		if p == "" || rank.TitleNorm(p) == rank.TitleNorm(j.Title) {
+		if !isChild(j) {
 			continue
 		}
+		p := strings.TrimSpace(j.Parent)
 		dir := parentDir(j.Path)
 		if dir == "" || dir == "." {
 			continue
@@ -95,11 +104,10 @@ func parentJobs(jobs []Job) []Job {
 func foldUnmatched(jobs []Job) []Job {
 	children := map[string][]int{}
 	for i, j := range jobs {
-		p := strings.TrimSpace(j.Parent)
-		if p == "" || rank.TitleNorm(p) == rank.TitleNorm(j.Title) {
+		if !isChild(j) {
 			continue
 		}
-		key := parentGroupKey(p, parentDir(j.Path))
+		key := parentGroupKey(strings.TrimSpace(j.Parent), parentDir(j.Path))
 		children[key] = append(children[key], i)
 	}
 	drop := make([]bool, len(jobs))

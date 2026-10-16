@@ -16,7 +16,15 @@ func TestCLIHelp(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	got := string(out)
+	if !strings.Contains(got, "MatchMedia") {
+		t.Fatalf("missing title in %s", got)
+	}
+	if ui, si := strings.Index(got, "Usage"), strings.Index(got, "Support MatchMedia"); ui < 0 || si < 0 || ui > si {
+		t.Fatalf("Usage should come before Support: %s", got)
+	}
 	for _, want := range []string{
+		"Support MatchMedia",
+		"ko-fi.com/alyshmahell",
 		"Usage",
 		"License",
 		"Attribution",
@@ -25,6 +33,8 @@ func TestCLIHelp(t *testing.T) {
 		"BSD 3-Clause",
 		"This product uses the TMDb API but is not endorsed or certified by TMDb.",
 		"themoviedb.org",
+		"tvmaze.com",
+		"omdbapi.com",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %q in %s", want, got)

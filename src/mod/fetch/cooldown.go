@@ -11,14 +11,14 @@ type Circuit struct {
 	mu     sync.Mutex
 	streak map[string]int
 	until  map[string]time.Time
-	exp    map[string]int
+	wait   map[string]int
 }
 
 func NewCircuit() *Circuit {
 	return &Circuit{
 		streak: map[string]int{},
 		until:  map[string]time.Time{},
-		exp:    map[string]int{},
+		wait:   map[string]int{},
 	}
 }
 
@@ -39,15 +39,15 @@ func (c *Circuit) Cooling(name string) bool {
 	return false
 }
 
-func (c *Circuit) Fail(name string, limit, minExp, maxExp int) {
+func (c *Circuit) Fail(name string, limit, minMS, maxMS int) {
 	if c == nil || limit <= 0 || name == "" {
 		return
 	}
-	if minExp < 0 {
-		minExp = 0
+	if minMS < 1 {
+		minMS = 1
 	}
-	if maxExp < minExp+2 {
-		maxExp = minExp + 2
+	if maxMS < minMS {
+		maxMS = minMS
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -55,17 +55,21 @@ func (c *Circuit) Fail(name string, limit, minExp, maxExp int) {
 	if c.streak[name] < limit {
 		return
 	}
-	e := c.exp[name]
-	if e == 0 {
-		e = minExp + 1
+	wait := c.wait[name]
+	if wait == 0 {
+		wait = minMS
 	} else {
-		e++
-		if e > maxExp {
-			e = maxExp
+		wait *= 2
+		if wait > maxMS || wait <= 0 {
+			wait = maxMS
 		}
 	}
-	c.exp[name] = e
-	c.until[name] = time.Now().Add(config.JitterExp(e))
+	c.wait[name] = wait
+	lo := wait / 2
+	if lo < 1 {
+		lo = 1
+	}
+	c.until[name] = time.Now().Add(config.JitterMS(lo, wait))
 	c.streak[name] = 0
 }
 
@@ -76,6 +80,6 @@ func (c *Circuit) OK(name string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.streak[name] = 0
-	delete(c.exp, name)
+	delete(c.wait, name)
 	delete(c.until, name)
 }

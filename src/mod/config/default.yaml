@@ -1,20 +1,20 @@
 http:
-  timeout_ms: 60000
+  deadline_ms: 60000
   retries: 5
   backoff:
-    min_exp: 10
-    max_exp: 13
-  provider_timeout_ms: 10000
-version: "0.1.0"
+    min_ms: 1024
+    max_ms: 8192
+  attempt_ms: 10000
+  cooldown:
+    fails: 5
+    min_ms: 32768
+    max_ms: 524288
+version: "0.1.1"
 match:
   min_score: 0.72
   min_margin: 0.04
   min_hits: 1
   workers: 8
-  cooldown_fails: 5
-  cooldown:
-    min_exp: 16
-    max_exp: 19
   prefer:
     anime:
       language: Japanese
@@ -46,8 +46,9 @@ ingest:
     film: movie
 providers:
   tmdb:
+    use: primary
+    require: api_key
     api_key: ""
-    defer: true
     base: "https://api.themoviedb.org/3"
     query: { api_key: "{api_key}", query: "{title}", include_adult: "false" }
     items: results
@@ -80,3 +81,53 @@ providers:
           items: episodes
           fields: { id: id, number: episode_number, title: name, synopsis: overview, poster: still_path }
           poster_prefix: "https://image.tmdb.org/t/p/w185"
+  omdb:
+    use: defer
+    types: [movie]
+    require: api_key
+    api_key: ""
+    base: "https://www.omdbapi.com"
+    url: "{base}"
+    query: { apikey: "{api_key}", s: "{title}", type: "movie" }
+    items: Search
+    fields: { id: imdbID, title: Title, year: Year, url: imdbID, poster: Poster }
+    url_prefix: "https://www.imdb.com/title/"
+    nfo: movie
+    uniqueid: imdb
+    detail:
+      url: "{base}"
+      query: { apikey: "{api_key}", i: "{id}", plot: "short" }
+      fields: { synopsis: Plot }
+  tvmaze:
+    use: fallback
+    types: [tv, anime, ""]
+    min_interval_ms: 128
+    retries: 2
+    base: "https://api.tvmaze.com"
+    url: "{base}/search/shows"
+    query: { q: "{title}" }
+    items: "$"
+    fields: { id: show.id, title: show.name, year: show.premiered, url: show.url, synopsis: show.summary, poster: show.image.medium, kind: show.type, language: show.language }
+    year: prefix4
+    titles:
+      url: "{base}/shows/{id}/akas"
+      items: "$"
+      fields: { title: name }
+      max: 3
+    episode:
+      url: "{base}/shows/{id}/episodebynumber"
+      query: { season: "{season}", number: "{episode}" }
+      fields: { id: id, title: name, year: airdate, url: url }
+      year: prefix4
+    catalog:
+      seasons:
+        url: "{base}/shows/{id}/seasons"
+        items: "$"
+        fields: { id: id, number: number, title: name, synopsis: summary, poster: image.medium, year: premiereDate }
+        year: prefix4
+      episodes:
+        url: "{base}/shows/{id}/episodes"
+        items: "$"
+        fields: { id: id, number: number, title: name, synopsis: summary, poster: image.medium, season: season, year: airdate }
+        year: prefix4
+    nfo: tvshow

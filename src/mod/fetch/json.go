@@ -24,7 +24,7 @@ var (
 	whitespace = regexp.MustCompile(`\s+`)
 )
 
-func providerGET(ctx context.Context, httpc *httpClient, rawURL string, query map[string]string, vars map[string]string, pace func(context.Context) error) ([]byte, error) {
+func providerGET(ctx context.Context, httpc *httpClient, rawURL string, query map[string]string, vars map[string]string, key string, pace func(context.Context) error) ([]byte, error) {
 	u, err := url.Parse(expand(rawURL, vars))
 	if err != nil {
 		return nil, err
@@ -37,7 +37,7 @@ func providerGET(ctx context.Context, httpc *httpClient, rawURL string, query ma
 		}
 	}
 	u.RawQuery = qs.Encode()
-	b, code, err := httpc.get(ctx, u.String(), pace)
+	b, code, err := httpc.get(ctx, u.String(), pace, key)
 	if err != nil {
 		return nil, err
 	}

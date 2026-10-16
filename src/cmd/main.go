@@ -22,15 +22,29 @@ const helpSep = "─────────────────────
 func printHelp() {
 	w := os.Stdout
 	color := useColor(isTTY(w))
+	printHelpTitle(w, color)
 	hadLogo := printHelpLogo(w)
 	printHelpSection(w, color, "Usage", hadLogo)
 	fmt.Fprintln(w, "matchmedia [flags]")
 	flag.CommandLine.SetOutput(w)
 	flag.PrintDefaults()
+	printHelpSection(w, color, "Support MatchMedia", true)
+	fmt.Fprintln(w, "https://ko-fi.com/alyshmahell")
+	printHelpKofi(w)
 	printHelpSection(w, color, "License", true)
 	printEmbedded(w, licenseText)
 	printHelpSection(w, color, "Attribution", true)
 	printEmbedded(w, attributionText)
+}
+
+func printHelpTitle(w *os.File, color bool) {
+	if color {
+		fmt.Fprintf(w, "%s%sMatchMedia%s\n", ansiBold, ansiGreen, ansiReset)
+		fmt.Fprintf(w, "%s%s%s%s\n", ansiBold, ansiGreen, helpSep, ansiReset)
+		return
+	}
+	fmt.Fprintln(w, "MatchMedia")
+	fmt.Fprintln(w, helpSep)
 }
 
 func printHelpSection(w *os.File, color bool, title string, sep bool) {
@@ -55,6 +69,17 @@ func printHelpLogo(w *os.File) bool {
 	}
 	fmt.Fprint(w, renderLogo(img))
 	return true
+}
+
+func printHelpKofi(w *os.File) {
+	if !useColor(isTTY(w)) {
+		return
+	}
+	img, err := decodeKofi()
+	if err != nil {
+		return
+	}
+	fmt.Fprint(w, renderLogo(img))
 }
 
 func printEmbedded(w *os.File, s string) {
@@ -127,7 +152,7 @@ func main() {
 		var matched, manual, unmatched, errored int
 		jobs = match.RunProgress(context.Background(), cfg, jobs, func(done, total int, job match.Job) {
 			mu.Lock()
-			countsFrom(job, &matched, &manual, &unmatched, &errored)
+			liveCountsFrom(job, &matched, &manual, &unmatched, &errored)
 			s := snapshot{
 				Phase:     "match",
 				Done:      done,
@@ -140,6 +165,16 @@ func main() {
 			}
 			mu.Unlock()
 			bar.draw(s)
+		})
+		matched, manual, unmatched, errored = tally(jobs)
+		bar.draw(snapshot{
+			Phase:     "match",
+			Done:      len(jobs),
+			Total:     len(jobs),
+			Matched:   matched,
+			Manual:    manual,
+			Unmatched: unmatched,
+			Error:     errored,
 		})
 	}
 	if *saveOn {
