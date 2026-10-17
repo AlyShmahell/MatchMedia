@@ -18,6 +18,8 @@ type Episode struct {
 	Poster   string   `json:"poster,omitempty"`
 	URL      string   `json:"url,omitempty"`
 	Year     string   `json:"year,omitempty"`
+	Runtime  string   `json:"runtime,omitempty"`
+	Aired    string   `json:"aired,omitempty"`
 	Path     string   `json:"path,omitempty"`
 	Paths    []string `json:"paths,omitempty"`
 }
@@ -145,7 +147,24 @@ func episodeFrom(spec config.Provider, list *config.CatalogList, item any, limit
 	if title == "" {
 		return Episode{}, false
 	}
-	return Episode{ID: id, Number: number, Title: title, Synopsis: synopsis, Poster: poster, URL: href, Year: year}, true
+	ep := Episode{ID: id, Number: number, Title: title, Synopsis: synopsis, Poster: poster, URL: href, Year: year}
+	if list != nil && list.Fields != nil {
+		if p := list.Fields["runtime"]; p != "" {
+			ep.Runtime = runtimeAttr(dig(item, p))
+		}
+		if p := list.Fields["airdate"]; p != "" {
+			ep.Aired = strings.TrimSpace(asString(dig(item, p)))
+		}
+	}
+	return ep, true
+}
+
+func runtimeAttr(v any) string {
+	s := strings.TrimSpace(attrString(v))
+	if s == "" || s == "0" {
+		return ""
+	}
+	return s
 }
 
 func episodesFrom(spec config.Provider, list *config.CatalogList, items []any, limit int) []Episode {

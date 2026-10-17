@@ -158,8 +158,8 @@ func extraAttrs(fields map[string]string, item any) map[string]string {
 		if coreFields[key] || path == "" {
 			continue
 		}
-		s := strings.TrimSpace(asString(dig(item, path)))
-		if s == "" {
+		s := strings.TrimSpace(attrString(dig(item, path)))
+		if s == "" || (key == "runtime" && s == "0") {
 			continue
 		}
 		if attrs == nil {
@@ -183,6 +183,37 @@ func dig(v any, path string) any {
 		cur = m[p]
 	}
 	return cur
+}
+
+// attrString turns provider values into NFO text. String lists and
+// objects with a name (genres, networks, countries) become comma-separated.
+func attrString(v any) string {
+	switch t := v.(type) {
+	case nil:
+		return ""
+	case []any:
+		var parts []string
+		for _, item := range t {
+			s := strings.TrimSpace(attrString(item))
+			if s == "" {
+				continue
+			}
+			parts = append(parts, s)
+		}
+		return strings.Join(parts, ", ")
+	case map[string]any:
+		if name, ok := t["name"]; ok {
+			if s := strings.TrimSpace(attrString(name)); s != "" {
+				return s
+			}
+		}
+		if avg, ok := t["average"]; ok {
+			return strings.TrimSpace(attrString(avg))
+		}
+		return ""
+	default:
+		return asString(v)
+	}
 }
 
 func asString(v any) string {

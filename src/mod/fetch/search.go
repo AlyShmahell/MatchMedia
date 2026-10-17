@@ -292,6 +292,29 @@ func mergeDetail(cand *rank.Hit, ep *config.Episode, item any, limit int) {
 	if p := ep.Fields["poster"]; p != "" && cand.Poster == "" {
 		cand.Poster = asString(dig(item, p))
 	}
+	if extra := extraAttrs(ep.Fields, item); len(extra) > 0 {
+		cand.Attrs = overlayAttrs(cand.Attrs, extra)
+	}
+}
+
+func overlayAttrs(base, extra map[string]string) map[string]string {
+	if len(extra) == 0 {
+		return base
+	}
+	if base == nil {
+		base = map[string]string{}
+	}
+	for k, v := range extra {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+		base[k] = v
+	}
+	if len(base) == 0 {
+		return nil
+	}
+	return base
 }
 
 func SearchErr(errs []string, ok int) error {

@@ -162,4 +162,7 @@ func applyDetail(dst *rank.Hit, src rank.Hit) {
 	if src.Poster != "" {
 		dst.Poster = src.Poster
 	}
+	if len(src.Attrs) > 0 {
+		dst.Attrs = overlayAttrs(dst.Attrs, src.Attrs)
+	}
 }
