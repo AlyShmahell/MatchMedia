@@ -1,6 +1,7 @@
 package fetch
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -19,6 +20,35 @@ func NewCircuit() *Circuit {
 		streak: map[string]int{},
 		until:  map[string]time.Time{},
 		wait:   map[string]int{},
+	}
+}
+
+// Wait blocks until name's pause has elapsed. A cancelled context ends the wait.
+func (c *Circuit) Wait(ctx context.Context, name string) error {
+	if c == nil || name == "" {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	for {
+		c.mu.Lock()
+		until, ok := c.until[name]
+		if ok && !time.Now().Before(until) {
+			delete(c.until, name)
+			ok = false
+		}
+		c.mu.Unlock()
+		if !ok {
+			return nil
+		}
+		timer := time.NewTimer(time.Until(until))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
 	}
 }
 

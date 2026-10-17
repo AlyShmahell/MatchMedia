@@ -100,9 +100,9 @@ func (c *Client) collectUncached(ctx context.Context, q rank.Query, wantedOnly b
 		go func(name string, spec config.Provider) {
 			defer wg.Done()
 			key := endpointKey(name, spec)
-			if c.cool.Cooling(key) {
+			if err := c.cool.Wait(ctx, key); err != nil {
 				mu.Lock()
-				errs = append(errs, name+": cooldown")
+				errs = append(errs, name+": "+err.Error())
 				mu.Unlock()
 				return
 			}

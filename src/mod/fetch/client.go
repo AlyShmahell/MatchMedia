@@ -78,8 +78,10 @@ func (c *httpClient) do(ctx context.Context, method, url, contentType string, bo
 	var lastErr error
 	var lastCode int
 	for attempt := 0; attempt < c.retries; attempt++ {
-		if key != "" && c.cool.Cooling(key) {
-			return nil, 0, "", fmt.Errorf("cooldown")
+		if key != "" {
+			if err := c.cool.Wait(ctx, key); err != nil {
+				return nil, 0, "", err
+			}
 		}
 		if pace != nil {
 			if err := pace(ctx); err != nil {

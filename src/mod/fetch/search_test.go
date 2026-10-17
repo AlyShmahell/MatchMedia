@@ -267,7 +267,7 @@ func TestCooldownTripsOnAttempts(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	overlay := filepath.Join(t.TempDir(), "overlay.yaml")
-	body := "http:\n  retries: 2\n  cooldown:\n    fails: 2\n    min_ms: 60000\n    max_ms: 120000\nproviders:\n  tvmaze:\n    require: api_key\n  stub:\n    use: primary\n    base: " + srv.URL + "\n    url: \"{base}/search\"\n    items: results\n    fields: { id: id, title: title }\n"
+	body := "http:\n  retries: 2\n  cooldown:\n    fails: 2\n    min_ms: 30\n    max_ms: 80\nproviders:\n  tvmaze:\n    require: api_key\n  stub:\n    use: primary\n    base: " + srv.URL + "\n    url: \"{base}/search\"\n    items: results\n    fields: { id: id, title: title }\n"
 	if err := os.WriteFile(overlay, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -276,15 +276,14 @@ func TestCooldownTripsOnAttempts(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := New(cfg)
-	q := rank.Query{Title: "X"}
-	_, _, _ = c.Search(context.Background(), q)
+	_, _, _ = c.Search(context.Background(), rank.Query{Title: "X"})
 	first := n.Load()
 	if first != 2 {
 		t.Fatalf("attempts %d want 2", first)
 	}
-	hits, errs, ok := c.Search(context.Background(), q)
-	if n.Load() != first {
-		t.Fatalf("retried after cooldown: %d", n.Load())
+	hits, errs, ok := c.Search(context.Background(), rank.Query{Title: "Y"})
+	if n.Load() <= first {
+		t.Fatalf("second search did not call after pause: %d then %d", first, n.Load())
 	}
 	if ok != 0 || len(hits) != 0 || len(errs) == 0 {
 		t.Fatalf("ok=%d hits=%d errs=%v", ok, len(hits), errs)
