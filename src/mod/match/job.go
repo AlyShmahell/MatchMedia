@@ -12,9 +12,11 @@ type CatalogSeason = fetch.Season
 type CatalogEpisode = fetch.Episode
 
 type JobFile struct {
-	Path    string `json:"path"`
-	Season  string `json:"season,omitempty"`
-	Episode string `json:"episode,omitempty"`
+	Path       string `json:"path"`
+	Season     string `json:"season,omitempty"`
+	Episode    string `json:"episode,omitempty"`
+	NFOPath    string `json:"nfo_path,omitempty"`
+	PosterPath string `json:"poster_path,omitempty"`
 }
 
 type Job struct {
@@ -28,6 +30,8 @@ type Job struct {
 	Episode    string          `json:"episode,omitempty"`
 	IMDB       string          `json:"imdb,omitempty"`
 	Path       string          `json:"path,omitempty"`
+	NFOPath    string          `json:"nfo_path,omitempty"`
+	PosterPath string          `json:"poster_path,omitempty"`
 	Kind       string          `json:"kind,omitempty"`
 	Role       string          `json:"role,omitempty"`
 	Files      []JobFile       `json:"files,omitempty"`

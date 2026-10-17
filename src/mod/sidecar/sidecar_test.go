@@ -38,4 +38,14 @@ func TestTitleNFOAndComplete(t *testing.T) {
 	if got.Status != "matched" || got.Title != "Title" || got.Year != "1999" {
 		t.Fatalf("%#v", got)
 	}
+	poster := filepath.Join(dir, "Title-poster.jpg")
+	if got.NFOPath != nfo || got.PosterPath != poster {
+		t.Fatalf("paths nfo=%q poster=%q", got.NFOPath, got.PosterPath)
+	}
+	if got.Match == nil || got.Match.Poster != "" {
+		t.Fatalf("poster url %#v", got.Match)
+	}
+	if len(got.Files) != 1 || got.Files[0].PosterPath == "" {
+		t.Fatalf("thumb %#v", got.Files)
+	}
 }

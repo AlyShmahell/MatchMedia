@@ -51,6 +51,88 @@ func TestWriteMovieFile(t *testing.T) {
 	}
 }
 
+func TestWriteStampsPathsAndFacts(t *testing.T) {
+	cfg, err := config.New("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	video := filepath.Join(dir, "Title.mkv")
+	if err := os.WriteFile(video, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	hit := rank.Hit{
+		Provider: "tmdb", ID: "129", Title: "Title", Year: "2001", UniqueID: "tmdb-movie",
+		Synopsis: "A plot",
+		Attrs:    map[string]string{"genres": "Drama, Mystery", "rating": "8.2", "runtime": "90", "language": "ja"},
+	}
+	job := match.Job{
+		Path: video, Kind: "movie", Status: "matched", Match: &hit,
+		Files: []match.JobFile{{Path: video}},
+	}
+	out, st, err := WriteProgress(context.Background(), cfg, "rescan", []match.Job{job}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.TitleNFO != 1 || len(out) != 1 || out[0].NFOPath != filepath.Join(dir, "Title.nfo") {
+		t.Fatalf("stats %+v job %#v", st, out)
+	}
+	if out[0].Files[0].PosterPath != filepath.Join(dir, "Title-thumb.jpg") {
+		t.Fatalf("thumb %q", out[0].Files[0].PosterPath)
+	}
+	body, err := os.ReadFile(out[0].NFOPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(body)
+	for _, want := range []string{"<genre>Drama</genre>", "<genre>Mystery</genre>", "<rating>8.2</rating>", "<runtime>90</runtime>", "<language>ja</language>"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %s in %s", want, got)
+		}
+	}
+	back := FromSidecar(out[0])
+	if back.Match == nil || back.Match.Attrs["rating"] != "8.2" || back.Match.Attrs["genres"] != "Drama, Mystery" {
+		t.Fatalf("attrs %#v", back.Match)
+	}
+}
+
+func TestWriteModeSkipsNFOAndCompleteChanges(t *testing.T) {
+	cfg, err := config.New("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	video := filepath.Join(dir, "Title.mkv")
+	if err := os.WriteFile(video, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	nfo := filepath.Join(dir, "Title.nfo")
+	if err := os.WriteFile(nfo, []byte(`<movie><title>Keep</title><year>1999</year></movie>`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "Title-poster.jpg"), []byte("art"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	hit := rank.Hit{Provider: "tmdb", ID: "1", Title: "Other", UniqueID: "tmdb-movie"}
+	job := FromSidecar(match.Job{Path: video, Kind: "movie", Files: []match.JobFile{{Path: video}}})
+	job.Match = &hit
+	job.Status = "matched"
+	if _, st, err := WriteProgress(context.Background(), cfg, "nfo", []match.Job{job}, nil); err != nil || st != (Stats{}) {
+		t.Fatalf("nfo %+v %v", st, err)
+	}
+	body, err := os.ReadFile(nfo)
+	if err != nil || !strings.Contains(string(body), "<title>Keep</title>") {
+		t.Fatalf("nfo mode rewrote %s", body)
+	}
+	if _, st, err := WriteProgress(context.Background(), cfg, "changes", []match.Job{job}, nil); err != nil || st != (Stats{}) {
+		t.Fatalf("changes %+v %v", st, err)
+	}
+	body, err = os.ReadFile(nfo)
+	if err != nil || !strings.Contains(string(body), "<title>Keep</title>") {
+		t.Fatalf("changes rewrote %s", body)
+	}
+}
+
 func TestWriteShowDirEpisodeNFO(t *testing.T) {
 	cfg, err := config.New("")
 	if err != nil {

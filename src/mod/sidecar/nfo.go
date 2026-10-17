@@ -3,6 +3,7 @@ package sidecar
 import (
 	"encoding/xml"
 	"os"
+	"strings"
 
 	"github.com/alyshmahell/matchmedia/src/mod/engine/rank"
 	"github.com/alyshmahell/matchmedia/src/mod/fetch"
@@ -23,6 +24,13 @@ type tvshowNFO struct {
 	Plot      string   `xml:"plot,omitempty"`
 	Year      string   `xml:"year,omitempty"`
 	Premiered string   `xml:"premiered,omitempty"`
+	Runtime   string   `xml:"runtime,omitempty"`
+	Rating    string   `xml:"rating,omitempty"`
+	Language  string   `xml:"language,omitempty"`
+	Ended     string   `xml:"ended,omitempty"`
+	Genre     []string `xml:"genre,omitempty"`
+	Country   []string `xml:"country,omitempty"`
+	Network   []string `xml:"network,omitempty"`
 	UniqueID  uniqueID `xml:"uniqueid"`
 }
 
@@ -33,6 +41,13 @@ type movieNFO struct {
 	Plot      string   `xml:"plot,omitempty"`
 	Year      string   `xml:"year,omitempty"`
 	Premiered string   `xml:"premiered,omitempty"`
+	Runtime   string   `xml:"runtime,omitempty"`
+	Rating    string   `xml:"rating,omitempty"`
+	Language  string   `xml:"language,omitempty"`
+	Ended     string   `xml:"ended,omitempty"`
+	Genre     []string `xml:"genre,omitempty"`
+	Country   []string `xml:"country,omitempty"`
+	Network   []string `xml:"network,omitempty"`
 	UniqueID  uniqueID `xml:"uniqueid"`
 }
 
@@ -59,12 +74,44 @@ func writeNFO(path string, v any) error {
 	return os.WriteFile(path, append([]byte(xmlHeader), b...), 0o644)
 }
 
+func splitAttr(attrs map[string]string, key string) []string {
+	raw := strings.TrimSpace(attr(attrs, key))
+	if raw == "" {
+		return nil
+	}
+	var out []string
+	for _, p := range strings.Split(raw, ",") {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func attr(attrs map[string]string, key string) string {
+	if attrs == nil {
+		return ""
+	}
+	return strings.TrimSpace(attrs[key])
+}
+
+func premieredOf(cand rank.Hit) string {
+	if p := attr(cand.Attrs, "premiered"); p != "" {
+		return p
+	}
+	return cand.Year
+}
+
 func writeShowNFO(path string, cand rank.Hit, uniqueType, jobType string) error {
 	if uniqueType == "" {
 		uniqueType = cand.Provider
 	}
 	return writeNFO(path, tvshowNFO{
-		Title: cand.Title, Type: jobType, Plot: cand.Synopsis, Year: cand.Year, Premiered: cand.Year, UniqueID: makeID(uniqueType, cand.ID),
+		Title: cand.Title, Type: jobType, Plot: cand.Synopsis, Year: cand.Year, Premiered: premieredOf(cand),
+		Runtime: attr(cand.Attrs, "runtime"), Rating: attr(cand.Attrs, "rating"), Language: attr(cand.Attrs, "language"),
+		Ended: attr(cand.Attrs, "ended"), Genre: splitAttr(cand.Attrs, "genres"), Country: splitAttr(cand.Attrs, "country"),
+		Network: splitAttr(cand.Attrs, "network"), UniqueID: makeID(uniqueType, cand.ID),
 	})
 }
 
@@ -73,7 +120,10 @@ func writeMovieNFO(path string, cand rank.Hit, uniqueType, jobType string) error
 		uniqueType = cand.Provider
 	}
 	return writeNFO(path, movieNFO{
-		Title: cand.Title, Type: jobType, Plot: cand.Synopsis, Year: cand.Year, Premiered: cand.Year, UniqueID: makeID(uniqueType, cand.ID),
+		Title: cand.Title, Type: jobType, Plot: cand.Synopsis, Year: cand.Year, Premiered: premieredOf(cand),
+		Runtime: attr(cand.Attrs, "runtime"), Rating: attr(cand.Attrs, "rating"), Language: attr(cand.Attrs, "language"),
+		Ended: attr(cand.Attrs, "ended"), Genre: splitAttr(cand.Attrs, "genres"), Country: splitAttr(cand.Attrs, "country"),
+		Network: splitAttr(cand.Attrs, "network"), UniqueID: makeID(uniqueType, cand.ID),
 	})
 }
 

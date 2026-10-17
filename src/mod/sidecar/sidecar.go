@@ -42,7 +42,7 @@ func Complete(job match.Job, requireEpisodeNFO bool) bool {
 
 func FromSidecar(job match.Job) match.Job {
 	job = fillSidecar(job)
-	nfo, poster, ok := titleSidecar(job)
+	nfo, _, ok := titleSidecar(job)
 	title, year := job.Title, job.Year
 	var meta nfoMeta
 	if ok {
@@ -70,7 +70,7 @@ func FromSidecar(job match.Job) match.Job {
 		Score:    1,
 		Jaccard:  1,
 		Synopsis: meta.plot,
-		Poster:   poster,
+		Attrs:    meta.attrs(),
 	}
 	job.Status = "matched"
 	job.Ranker = "set"
@@ -85,6 +85,7 @@ func Fill(job match.Job) match.Job {
 }
 
 func fillSidecar(job match.Job) match.Job {
+	job = stampSidecarPaths(job)
 	nfo, _, ok := titleSidecar(job)
 	if ok {
 		if meta, err := readSidecarNFO(nfo); err == nil && kindAgrees(job.Kind, meta.root) {
@@ -98,6 +99,26 @@ func fillSidecar(job match.Job) match.Job {
 	}
 	if job.Kind == "show" {
 		job.Files = applyEpisodeNFO(job.Files)
+	}
+	return job
+}
+
+// stampSidecarPaths records the files beside the media. Poster on the hit stays a provider URL.
+func stampSidecarPaths(job match.Job) match.Job {
+	nfo, poster, ok := titleSidecar(job)
+	if ok {
+		job.NFOPath = nfo
+	}
+	if poster != "" {
+		job.PosterPath = poster
+	}
+	for i, f := range job.Files {
+		if p := episodeNFOPath(f.Path); p != "" {
+			job.Files[i].NFOPath = p
+		}
+		if f.Path != "" {
+			job.Files[i].PosterPath = thumbPath(f.Path)
+		}
 	}
 	return job
 }
@@ -173,6 +194,18 @@ func episodeNFOOK(video string) bool {
 	return episodeNFOPath(video) != ""
 }
 
+func thumbPath(video string) string {
+	dir := filepath.Dir(video)
+	base := trimExt(filepath.Base(video))
+	for _, ext := range posterExt {
+		p := filepath.Join(dir, base+"-thumb"+ext)
+		if fileExists(p) {
+			return p
+		}
+	}
+	return filepath.Join(dir, base+"-thumb.jpg")
+}
+
 func findPoster(dir, base string) string {
 	if dir == "" {
 		return ""
@@ -211,6 +244,30 @@ func canonNum(s string) string {
 
 type nfoMeta struct {
 	root, title, year, plot, provider, id, season, episode string
+	runtime, rating, language, premiered, ended            string
+	genres, countries, networks                            []string
+}
+
+func (m nfoMeta) attrs() map[string]string {
+	out := map[string]string{}
+	put := func(k, v string) {
+		v = strings.TrimSpace(v)
+		if v != "" {
+			out[k] = v
+		}
+	}
+	put("genres", strings.Join(m.genres, ", "))
+	put("rating", m.rating)
+	put("runtime", m.runtime)
+	put("language", m.language)
+	put("premiered", m.premiered)
+	put("ended", m.ended)
+	put("country", strings.Join(m.countries, ", "))
+	put("network", strings.Join(m.networks, ", "))
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func readSidecarNFO(path string) (nfoMeta, error) {
@@ -219,13 +276,21 @@ func readSidecarNFO(path string) (nfoMeta, error) {
 		return nfoMeta{}, err
 	}
 	var n struct {
-		XMLName  xml.Name
-		Title    string `xml:"title"`
-		Year     string `xml:"year"`
-		Plot     string `xml:"plot"`
-		Season   string `xml:"season"`
-		Episode  string `xml:"episode"`
-		UniqueID struct {
+		XMLName   xml.Name
+		Title     string   `xml:"title"`
+		Year      string   `xml:"year"`
+		Plot      string   `xml:"plot"`
+		Season    string   `xml:"season"`
+		Episode   string   `xml:"episode"`
+		Runtime   string   `xml:"runtime"`
+		Rating    string   `xml:"rating"`
+		Language  string   `xml:"language"`
+		Premiered string   `xml:"premiered"`
+		Ended     string   `xml:"ended"`
+		Genre     []string `xml:"genre"`
+		Country   []string `xml:"country"`
+		Network   []string `xml:"network"`
+		UniqueID  struct {
 			Type  string `xml:"type,attr"`
 			Value string `xml:",chardata"`
 		} `xml:"uniqueid"`
@@ -238,6 +303,8 @@ func readSidecarNFO(path string) (nfoMeta, error) {
 		return nfoMeta{
 			root: n.XMLName.Local, title: n.Title, year: n.Year, plot: n.Plot,
 			provider: n.UniqueID.Type, id: n.UniqueID.Value, season: n.Season, episode: n.Episode,
+			runtime: n.Runtime, rating: n.Rating, language: n.Language, premiered: n.Premiered, ended: n.Ended,
+			genres: n.Genre, countries: n.Country, networks: n.Network,
 		}, nil
 	default:
 		return nfoMeta{}, os.ErrInvalid

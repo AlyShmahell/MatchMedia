@@ -13,8 +13,8 @@ import (
 	"github.com/alyshmahell/matchmedia/src/mod/config"
 	"github.com/alyshmahell/matchmedia/src/mod/ingest"
 	"github.com/alyshmahell/matchmedia/src/mod/match"
-	"github.com/alyshmahell/matchmedia/src/mod/sidecar"
 	"github.com/alyshmahell/matchmedia/src/mod/scan"
+	"github.com/alyshmahell/matchmedia/src/mod/sidecar"
 )
 
 const helpSep = "────────────────────────────────"
@@ -180,7 +180,7 @@ func main() {
 	if *saveOn {
 		nSave := matchedCount(jobs)
 		bar.draw(snapshot{Phase: "save", Done: 0, Total: nSave})
-		if _, err := sidecar.WriteProgress(context.Background(), cfg, jobs, func(done, total int, job match.Job, st sidecar.Stats) {
+		if _, _, err := sidecar.WriteProgress(context.Background(), cfg, *mode, jobs, func(done, total int, job match.Job, st sidecar.Stats) {
 			bar.draw(snapshot{Phase: "save", Done: done, Total: total, NFO: st.TitleNFO, EpisodeNFO: st.EpisodeNFO, Posters: st.Posters, Title: job.Title})
 		}); err != nil {
 			log.Fatal(err)
