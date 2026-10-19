@@ -63,15 +63,18 @@ A complete sidecar is a title NFO plus a poster. For `changes`, a show also need
 ```go
 import (
 	"github.com/alyshmahell/matchmedia/src/mod/config"
+	"github.com/alyshmahell/matchmedia/src/mod/fetch"
 	"github.com/alyshmahell/matchmedia/src/mod/match"
 	"github.com/alyshmahell/matchmedia/src/mod/sidecar"
 	"github.com/alyshmahell/matchmedia/src/mod/scan"
 )
 
 cfg, err := config.New("overlay.yaml")
+client := fetch.New(cfg)
 jobs, err := scan.Run(cfg, "/media/Shows", scan.ModeMissing)
-jobs = match.Run(ctx, cfg, jobs)
-_, err = sidecar.Write(ctx, cfg, jobs)
+for job := range match.Run(ctx, client, jobs) {
+	_, err = sidecar.Write(ctx, client, []match.Job{job})
+}
 ```
 
 `match.Run` searches YAML providers, ranks hits with `rank.Rank(cfg, q, hits)`, and sets status:
@@ -83,13 +86,13 @@ _, err = sidecar.Write(ctx, cfg, jobs)
 
 Rank uses Jaccard of title tokens plus a synopsis lift. Auto-match uses `match.min_score` and `match.min_margin`. Trailing `(YYYY)` is stripped from the search title; identical searches share one provider request. An empty full-title search retries word n-grams (n≥3) and ranks those hits against the original title.
 
-`match.Run` always prepends a job for each scan parent folder (keyed by path) when children exist under that folder. After matching, unmatched and error children fold into that parent when it is matched or manual (their files are unioned onto the parent). Matched and manual children stay. The parent job remains even if every child already matched.
+`match.Run` always prepends a job for each scan parent folder (keyed by path) when children exist under that folder. A parent and its children are yielded together, after unmatched and error children fold into that parent when it is matched or manual (their files are unioned onto the parent). Matched and manual children stay. The parent job remains even if every child already matched.
 
 Ingest a list instead of a scan:
 
 ```go
 jobs, err := ingest.ParseJobs(cfg, reader, "titles.csv", "")
-jobs = match.Run(ctx, cfg, jobs)
+jobs = match.Collect(match.Run(ctx, client, jobs))
 ```
 
 Import `github.com/alyshmahell/matchmedia/src/mod/ingest`.
@@ -108,11 +111,11 @@ Each provider has `use`:
 
 Shipped YAML:
 
-- `tmdb` (`primary`) has two children: `movie` and `tv`. Shared keys stay on the parent (`base`, `query`, `api_key`, `poster_prefix`). Kind-specific keys stay on the child (`url`, `fields`, `nfo`, `uniqueid`, `catalog`). Set `api_key` in overlay.
+- `tmdb` (`primary`) has two children: `movie` and `tv`. Shared keys stay on the parent (`base`, `api_key`, `poster_prefix`). Search `url`, `query`, `items`, and `fields` stay on each child's `search` section. Kind-specific keys stay on the child (`nfo`, `uniqueid`, `catalog`). Set `api_key` in overlay.
 - `omdb` (`defer`) is a movie provider. It needs `api_key` in overlay. An empty key skips the defer wave.
-- `tvmaze` (`fallback`) is a TV provider. It needs no key.
+- `tvmaze` (`fallback`) is a TV provider. It needs no key. `min_interval_ms` is set on `search` only.
 
-A provider with one kind keeps `url` and `fields` on the parent. Omit `movie` and `tv`.
+A provider with one kind can keep `url`, `query`, `items`, and `fields` on the parent. Those load as its `search` section. Omit `movie` and `tv`. `min_interval_ms` on the provider paces every section. The same key on `search`, `titles`, `detail`, `episode`, or a catalog list replaces that default for that section.
 
 `Candidate.Provider` is the YAML key (`tmdb`, `omdb`, `tvmaze`). `nfo` and `uniqueid` come from the spec that produced the hit.
 
@@ -150,6 +153,7 @@ Flags:
 | `-mode` | `rescan`, `changes`, `missing`, or `nfo`. Default is `rescan`. |
 | `-ingest` | CSV or JSON title list instead of `-path`. |
 | `-report` | Markdown report path. Default is `match.md`. |
+| `-log` | Run log path. Default is `matchmedia.log` in the working directory. |
 | `-save` | Write NFO and posters next to the media. Default is off. |
 | `-help` | Print the MatchMedia title, logo (TTY), usage, Support MatchMedia (Ko-fi link then QR), license, and attribution, then exit. |
 

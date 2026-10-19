@@ -5,12 +5,114 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/alyshmahell/matchmedia/src/mod/config"
 )
+
+var (
+	requestLogMu sync.Mutex
+	requestLog   func(method, rawURL string)
+)
+
+func SetRequestLog(fn func(method, rawURL string)) {
+	requestLogMu.Lock()
+	requestLog = fn
+	requestLogMu.Unlock()
+}
+
+func noteRequest(method, rawURL string) {
+	requestLogMu.Lock()
+	fn := requestLog
+	requestLogMu.Unlock()
+	if fn == nil {
+		return
+	}
+	fn(method, redactURL(rawURL))
+}
+
+func redactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	q := u.Query()
+	changed := false
+	for k, vals := range q {
+		if !strings.EqualFold(k, "api_key") && !strings.EqualFold(k, "apikey") {
+			continue
+		}
+		for i := range vals {
+			vals[i] = "REDACTED"
+		}
+		q[k] = vals
+		changed = true
+	}
+	if !changed {
+		return raw
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+type bodyFlight struct {
+	wg    sync.WaitGroup
+	body  []byte
+	ctype string
+	code  int
+	err   error
+	ok    bool
+}
+
+type bodyCache struct {
+	mu sync.Mutex
+	m  map[string]*bodyFlight
+}
+
+func newBodyCache() *bodyCache {
+	return &bodyCache{m: map[string]*bodyFlight{}}
+}
+
+func (b *bodyCache) do(rawURL string, fn func() ([]byte, string, int, error)) ([]byte, string, int, error) {
+	if b == nil {
+		return fn()
+	}
+	b.mu.Lock()
+	if e, ok := b.m[rawURL]; ok {
+		b.mu.Unlock()
+		e.wg.Wait()
+		if !e.ok {
+			return nil, "", e.code, e.err
+		}
+		return append([]byte(nil), e.body...), e.ctype, e.code, nil
+	}
+	e := &bodyFlight{}
+	e.wg.Add(1)
+	b.m[rawURL] = e
+	b.mu.Unlock()
+	body, ctype, code, err := fn()
+	if err == nil && code < 400 {
+		e.body = append([]byte(nil), body...)
+		e.ctype = ctype
+		e.code = code
+		e.ok = true
+		e.wg.Done()
+		return append([]byte(nil), body...), ctype, code, nil
+	}
+	e.code = code
+	e.err = err
+	e.wg.Done()
+	b.mu.Lock()
+	if b.m[rawURL] == e {
+		delete(b.m, rawURL)
+	}
+	b.mu.Unlock()
+	return body, ctype, code, err
+}
 
 type httpClient struct {
 	hc             *http.Client
@@ -23,6 +125,7 @@ type httpClient struct {
 	coolFails      int
 	coolMinMS      int
 	coolMaxMS      int
+	bodies         *bodyCache
 }
 
 func (c *httpClient) forSpec(spec config.Provider) *httpClient {
@@ -44,7 +147,7 @@ func newHTTP(cfg *config.Config, cool *Circuit) *httpClient {
 	cd := cfg.HTTP.Cooldown
 	return &httpClient{
 		hc:             &http.Client{Timeout: cfg.HTTPTimeout()},
-		userAgent:      "matchmedia/" + cfg.Version + " (+https://github.com/alyshmahell/matchmedia)",
+		userAgent:      userAgent(),
 		retries:        cfg.HTTP.Retries,
 		backoffMin:     br.MinMS,
 		backoffMax:     br.MaxMS,
@@ -53,6 +156,7 @@ func newHTTP(cfg *config.Config, cool *Circuit) *httpClient {
 		coolFails:      cd.Fails,
 		coolMinMS:      cd.MinMS,
 		coolMaxMS:      cd.MaxMS,
+		bodies:         newBodyCache(),
 	}
 }
 
@@ -74,6 +178,17 @@ func (c *httpClient) getBytes(ctx context.Context, url string) ([]byte, string, 
 }
 
 func (c *httpClient) do(ctx context.Context, method, url, contentType string, body io.Reader, pace func(context.Context) error, key string) ([]byte, int, string, error) {
+	if c != nil && c.bodies != nil && method == http.MethodGet && body == nil {
+		b, ctype, code, err := c.bodies.do(url, func() ([]byte, string, int, error) {
+			got, code, ctype, err := c.roundTrip(ctx, method, url, contentType, nil, pace, key)
+			return got, ctype, code, err
+		})
+		return b, code, ctype, err
+	}
+	return c.roundTrip(ctx, method, url, contentType, body, pace, key)
+}
+
+func (c *httpClient) roundTrip(ctx context.Context, method, url, contentType string, body io.Reader, pace func(context.Context) error, key string) ([]byte, int, string, error) {
 	canRetry := method == http.MethodGet && body == nil
 	var lastErr error
 	var lastCode int
@@ -102,6 +217,7 @@ func (c *httpClient) do(ctx context.Context, method, url, contentType string, bo
 		if contentType != "" {
 			req.Header.Set("Content-Type", contentType)
 		}
+		noteRequest(method, req.URL.String())
 		resp, err := c.hc.Do(req)
 		if err != nil {
 			cancel()
@@ -203,15 +319,24 @@ func sleepBackoff(ctx context.Context, wait, after time.Duration) error {
 	}
 }
 
-func Bytes(ctx context.Context, cfg *config.Config, rawURL, provider string) ([]byte, string, error) {
-	if strings.TrimSpace(rawURL) == "" {
+func (c *Client) Config() *config.Config {
+	if c == nil {
+		return nil
+	}
+	return c.cfg
+}
+
+func (c *Client) Bytes(ctx context.Context, rawURL, provider string) ([]byte, string, error) {
+	if c == nil || c.http == nil || strings.TrimSpace(rawURL) == "" {
 		return nil, "", fmt.Errorf("empty url")
 	}
-	c := newHTTP(cfg, nil)
-	if spec, ok := cfg.Providers[provider]; ok {
-		c = c.forSpec(spec)
+	hc := c.http
+	if c.cfg != nil {
+		if spec, ok := c.cfg.Providers[provider]; ok {
+			hc = hc.forSpec(spec)
+		}
 	}
-	b, ctype, code, err := c.getBytes(ctx, rawURL)
+	b, ctype, code, err := hc.getBytes(ctx, rawURL)
 	if err != nil {
 		return nil, "", err
 	}

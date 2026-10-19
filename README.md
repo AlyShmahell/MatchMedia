@@ -55,15 +55,18 @@ go get github.com/alyshmahell/matchmedia/src
 ```go
 import (
 	"github.com/alyshmahell/matchmedia/src/mod/config"
+	"github.com/alyshmahell/matchmedia/src/mod/fetch"
 	"github.com/alyshmahell/matchmedia/src/mod/match"
 	"github.com/alyshmahell/matchmedia/src/mod/sidecar"
 	"github.com/alyshmahell/matchmedia/src/mod/scan"
 )
 
 cfg, err := config.New("overlay.yaml")
+client := fetch.New(cfg)
 jobs, err := scan.Run(cfg, "/media/Shows", scan.ModeMissing)
-jobs = match.Run(ctx, cfg, jobs)
-_, err = sidecar.Write(ctx, cfg, jobs)
+for job := range match.Run(ctx, client, jobs) {
+	_, err = sidecar.Write(ctx, client, []match.Job{job})
+}
 ```
 
 For grouping, ranking, scan modes, TMDB YAML, and the rest of the CLI, see [docs/manual.md](docs/manual.md).

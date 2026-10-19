@@ -93,6 +93,40 @@ func TestOverlayWins(t *testing.T) {
 	}
 }
 
+func TestSearchSection(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "overlay.yaml")
+	over := []byte("providers:\n  local:\n    url: http://example/search\n    items: results\n    fields: { id: id, title: title }\n    min_interval_ms: 40\n    titles:\n      url: http://example/titles\n      min_interval_ms: 90\n  tvmaze:\n    search:\n      min_interval_ms: 600\n")
+	if err := os.WriteFile(path, over, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	movie, ok := cfg.Endpoint("tmdb", "movie")
+	if !ok || movie.Search == nil || movie.Search.URL != "{base}/search/movie" || movie.Search.Items != "results" || movie.Fields["title"] != "title" {
+		t.Fatalf("tmdb movie search %#v", movie.Search)
+	}
+	tvmaze, ok := cfg.Endpoint("tvmaze", "tvshow")
+	if !ok || tvmaze.MinIntervalMS != 0 || tvmaze.Search == nil || tvmaze.Search.MinIntervalMS != 600 {
+		t.Fatalf("tvmaze pace provider %d search %#v", tvmaze.MinIntervalMS, tvmaze.Search)
+	}
+	if tvmaze.Search.Fields["network"] != "show.network.name" || tvmaze.Fields["title"] != "show.name" {
+		t.Fatalf("tvmaze fields %#v", tvmaze.Search.Fields)
+	}
+	if tvmaze.Titles == nil || tvmaze.Titles.MinIntervalMS != 0 {
+		t.Fatal("tvmaze titles paced")
+	}
+	local, ok := cfg.Endpoint("local", "")
+	if !ok || local.Search == nil || local.Search.URL != "http://example/search" || local.MinIntervalMS != 40 {
+		t.Fatalf("local %#v", local.Search)
+	}
+	if local.Titles == nil || local.Titles.MinIntervalMS != 90 {
+		t.Fatalf("local titles %#v", local.Titles)
+	}
+}
+
 func TestEndpointLookup(t *testing.T) {
 	cfg, err := New("")
 	if err != nil {

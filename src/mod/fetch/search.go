@@ -149,14 +149,18 @@ func providerWanted(spec config.Provider, jobType string) bool {
 }
 
 func (c *Client) searchEndpoint(ctx context.Context, name string, spec config.Provider, q rank.Query) ([]rank.Hit, error) {
+	if spec.Search == nil || strings.TrimSpace(spec.Search.URL) == "" {
+		return nil, nil
+	}
 	key := endpointKey(name, spec)
-	raw, err := providerGET(ctx, c.http.forSpec(spec), spec.URL, spec.Query, varsFor(spec, q, ""), key, func(ctx context.Context) error {
-		return paceProvider(ctx, key, spec.MinIntervalMS)
+	s := spec.Search
+	raw, err := providerGET(ctx, c.http.forSpec(spec), s.URL, s.Query, varsFor(spec, q, ""), key, func(ctx context.Context) error {
+		return sectionPace(ctx, name, spec, "search", s.MinIntervalMS)
 	})
 	if err != nil {
 		return nil, err
 	}
-	items, err := extractItems(raw, spec.Items)
+	items, err := extractItems(raw, s.Items)
 	if err != nil {
 		c.trip(key)
 		return nil, err
@@ -203,7 +207,7 @@ func (c *Client) hydrateTitles(ctx context.Context, name string, spec config.Pro
 func (c *Client) fetchTitleAkas(ctx context.Context, name string, spec config.Provider, q rank.Query, cand *rank.Hit, jobContent map[string]struct{}, stop map[string]struct{}) error {
 	tl := spec.Titles
 	raw, err := providerGET(ctx, c.http.forSpec(spec), tl.URL, tl.Query, varsFor(spec, q, cand.ID), endpointKey(name, spec), func(ctx context.Context) error {
-		return paceProvider(ctx, endpointKey(name, spec), spec.MinIntervalMS)
+		return sectionPace(ctx, name, spec, "titles", tl.MinIntervalMS)
 	})
 	if err != nil {
 		return err
@@ -250,7 +254,7 @@ func (c *Client) Detail(ctx context.Context, q rank.Query, cand *rank.Hit) {
 	}
 	hit, ok := c.cache.doDetail(idKey(cand.Provider, cand.ID), func() (rank.Hit, bool) {
 		src := *cand
-		if err := paceProvider(ctx, endpointKey(cand.Provider, spec), spec.MinIntervalMS); err != nil {
+		if err := sectionPace(ctx, cand.Provider, spec, "detail", spec.Detail.MinIntervalMS); err != nil {
 			return src, false
 		}
 		raw, err := providerGET(ctx, c.http.forSpec(spec), spec.Detail.URL, spec.Detail.Query, varsFor(spec, q, cand.ID), endpointKey(cand.Provider, spec), nil)

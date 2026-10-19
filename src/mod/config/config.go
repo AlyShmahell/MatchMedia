@@ -75,39 +75,49 @@ type MSRange struct {
 }
 
 type Provider struct {
-	Types             []string          `yaml:"types"`
-	Require           string            `yaml:"require"`
-	Secret            string            `yaml:"secret"`
-	APIKey            string            `yaml:"api_key"`
-	Base              string            `yaml:"base"`
-	URL               string            `yaml:"url"`
-	Query             map[string]string `yaml:"query"`
-	Items             string            `yaml:"items"`
-	Fields            map[string]string `yaml:"fields"`
-	Year              string            `yaml:"year"`
-	URLPrefix         string            `yaml:"url_prefix"`
-	PosterPrefix      string            `yaml:"poster_prefix"`
-	MinIntervalMS     int               `yaml:"min_interval_ms"`
-	Retries           int               `yaml:"retries"`
-	AttemptMS         int               `yaml:"attempt_ms"`
-	Use               string            `yaml:"use"`
-	TypeParams        map[string]string `yaml:"type_params"`
-	NFO               string            `yaml:"nfo"`
-	UniqueID          string            `yaml:"uniqueid"`
-	Episode           *Episode          `yaml:"episode"`
-	Detail            *Episode          `yaml:"detail"`
-	Catalog           *Catalog          `yaml:"catalog"`
-	Titles            *Titles           `yaml:"titles"`
-	Attrs             map[string]string `yaml:"attrs"`
-	Movie             *Provider         `yaml:"movie"`
-	TV                *Provider         `yaml:"tv"`
+	Types         []string          `yaml:"types"`
+	Require       string            `yaml:"require"`
+	Secret        string            `yaml:"secret"`
+	APIKey        string            `yaml:"api_key"`
+	Base          string            `yaml:"base"`
+	URL           string            `yaml:"url"`
+	Query         map[string]string `yaml:"query"`
+	Items         string            `yaml:"items"`
+	Fields        map[string]string `yaml:"fields"`
+	Year          string            `yaml:"year"`
+	URLPrefix     string            `yaml:"url_prefix"`
+	PosterPrefix  string            `yaml:"poster_prefix"`
+	MinIntervalMS int               `yaml:"min_interval_ms"`
+	Retries       int               `yaml:"retries"`
+	AttemptMS     int               `yaml:"attempt_ms"`
+	Use           string            `yaml:"use"`
+	TypeParams    map[string]string `yaml:"type_params"`
+	NFO           string            `yaml:"nfo"`
+	UniqueID      string            `yaml:"uniqueid"`
+	Search        *Search           `yaml:"search"`
+	Episode       *Episode          `yaml:"episode"`
+	Detail        *Episode          `yaml:"detail"`
+	Catalog       *Catalog          `yaml:"catalog"`
+	Titles        *Titles           `yaml:"titles"`
+	Attrs         map[string]string `yaml:"attrs"`
+	Movie         *Provider         `yaml:"movie"`
+	TV            *Provider         `yaml:"tv"`
+}
+
+type Search struct {
+	URL           string            `yaml:"url"`
+	Query         map[string]string `yaml:"query"`
+	Items         string            `yaml:"items"`
+	Fields        map[string]string `yaml:"fields"`
+	MinIntervalMS int               `yaml:"min_interval_ms"`
 }
 
 type Episode struct {
-	URL    string            `yaml:"url"`
-	Query  map[string]string `yaml:"query"`
-	Fields map[string]string `yaml:"fields"`
-	Year   string            `yaml:"year"`
+	URL           string            `yaml:"url"`
+	Query         map[string]string `yaml:"query"`
+	Fields        map[string]string `yaml:"fields"`
+	Year          string            `yaml:"year"`
+	MinIntervalMS int               `yaml:"min_interval_ms"`
 }
 
 type Catalog struct {
@@ -116,20 +126,22 @@ type Catalog struct {
 }
 
 type CatalogList struct {
-	URL          string            `yaml:"url"`
-	Query        map[string]string `yaml:"query"`
-	Items        string            `yaml:"items"`
-	Fields       map[string]string `yaml:"fields"`
-	Year         string            `yaml:"year"`
-	PosterPrefix string            `yaml:"poster_prefix"`
+	URL           string            `yaml:"url"`
+	Query         map[string]string `yaml:"query"`
+	Items         string            `yaml:"items"`
+	Fields        map[string]string `yaml:"fields"`
+	Year          string            `yaml:"year"`
+	PosterPrefix  string            `yaml:"poster_prefix"`
+	MinIntervalMS int               `yaml:"min_interval_ms"`
 }
 
 type Titles struct {
-	URL    string            `yaml:"url"`
-	Query  map[string]string `yaml:"query"`
-	Items  string            `yaml:"items"`
-	Fields map[string]string `yaml:"fields"`
-	Max    int               `yaml:"max"`
+	URL           string            `yaml:"url"`
+	Query         map[string]string `yaml:"query"`
+	Items         string            `yaml:"items"`
+	Fields        map[string]string `yaml:"fields"`
+	Max           int               `yaml:"max"`
+	MinIntervalMS int               `yaml:"min_interval_ms"`
 }
 
 const (
@@ -210,6 +222,7 @@ func (c *Config) Endpoint(provider, nfo string) (Provider, bool) {
 
 func expandProvider(name string, spec Provider) []Endpoint {
 	if spec.Movie == nil && spec.TV == nil {
+		resolveSearch(&spec)
 		return []Endpoint{{Name: name, Spec: spec}}
 	}
 	var out []Endpoint
@@ -240,6 +253,15 @@ func inherit(parent, child Provider, defaultNFO string) Provider {
 	}
 	if child.Fields != nil {
 		out.Fields = child.Fields
+	}
+	if child.Search != nil {
+		cp := *child.Search
+		out.Search = &cp
+	} else if child.URL != "" || child.Query != nil || child.Items != "" || child.Fields != nil {
+		out.Search = nil
+	} else if out.Search != nil {
+		cp := *out.Search
+		out.Search = &cp
 	}
 	if child.Year != "" {
 		out.Year = child.Year
@@ -294,7 +316,37 @@ func inherit(parent, child Provider, defaultNFO string) Provider {
 	if out.Use == "" {
 		out.Use = UsePrimary
 	}
+	resolveSearch(&out)
 	return out
+}
+
+func resolveSearch(p *Provider) {
+	if p == nil {
+		return
+	}
+	if p.Search == nil {
+		if p.URL == "" && p.Query == nil && p.Items == "" && p.Fields == nil {
+			return
+		}
+		p.Search = &Search{}
+	}
+	s := p.Search
+	if s.URL == "" {
+		s.URL = p.URL
+	}
+	if s.Query == nil {
+		s.Query = p.Query
+	}
+	if s.Items == "" {
+		s.Items = p.Items
+	}
+	if s.Fields == nil {
+		s.Fields = p.Fields
+	}
+	p.URL = s.URL
+	p.Query = s.Query
+	p.Items = s.Items
+	p.Fields = s.Fields
 }
 
 func Validate(c Config) error {

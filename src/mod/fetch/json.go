@@ -250,6 +250,17 @@ func clipText(s string, n int) string {
 	return strings.TrimSpace(string(r[:n]))
 }
 
+func sectionPace(ctx context.Context, name string, spec config.Provider, section string, sectionMS int) error {
+	ms := spec.MinIntervalMS
+	if sectionMS > 0 {
+		ms = sectionMS
+	}
+	if ms <= 0 {
+		return nil
+	}
+	return paceProvider(ctx, endpointKey(name, spec)+"/"+section, ms)
+}
+
 func paceProvider(ctx context.Context, name string, minMS int) error {
 	if minMS <= 0 {
 		return nil

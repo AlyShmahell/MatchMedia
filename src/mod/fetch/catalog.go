@@ -60,7 +60,7 @@ func (c *Client) loadCatalog(ctx context.Context, name string, spec config.Provi
 	limit := c.cfg.Match.SynopsisLimit
 	seasons := make([]Season, 0)
 	if cat.Seasons != nil && cat.Seasons.URL != "" {
-		items, err := c.fetchCatalogList(ctx, name, spec, q, cat.Seasons, showID, "", "")
+		items, err := c.fetchCatalogList(ctx, name, spec, q, cat.Seasons, "catalog/seasons", showID, "", "")
 		if err != nil {
 			return nil, err
 		}
@@ -83,7 +83,7 @@ func (c *Client) loadCatalog(ctx context.Context, name string, spec config.Provi
 			if strings.Contains(cat.Episodes.URL, "{season_id}") && seasons[i].ID == "" {
 				continue
 			}
-			items, err := c.fetchCatalogList(ctx, name, spec, q, cat.Episodes, showID, seasons[i].Number, seasons[i].ID)
+			items, err := c.fetchCatalogList(ctx, name, spec, q, cat.Episodes, "catalog/episodes", showID, seasons[i].Number, seasons[i].ID)
 			if err != nil {
 				if ctx.Err() != nil {
 					return nil, err
@@ -94,7 +94,7 @@ func (c *Client) loadCatalog(ctx context.Context, name string, spec config.Provi
 		}
 		return seasons, nil
 	}
-	items, err := c.fetchCatalogList(ctx, name, spec, q, cat.Episodes, showID, "", "")
+	items, err := c.fetchCatalogList(ctx, name, spec, q, cat.Episodes, "catalog/episodes", showID, "", "")
 	if err != nil {
 		return seasons, nil
 	}
@@ -110,8 +110,8 @@ func (c *Client) loadCatalog(ctx context.Context, name string, spec config.Provi
 	return attachGroupedEpisodes(seasons, grouped), nil
 }
 
-func (c *Client) fetchCatalogList(ctx context.Context, name string, spec config.Provider, q rank.Query, list *config.CatalogList, showID, season, seasonID string) ([]any, error) {
-	if err := paceProvider(ctx, endpointKey(name, spec), spec.MinIntervalMS); err != nil {
+func (c *Client) fetchCatalogList(ctx context.Context, name string, spec config.Provider, q rank.Query, list *config.CatalogList, section, showID, season, seasonID string) ([]any, error) {
+	if err := sectionPace(ctx, name, spec, section, list.MinIntervalMS); err != nil {
 		return nil, err
 	}
 	v := varsFor(spec, q, showID)

@@ -54,3 +54,4 @@ tests/
 /src/cmd/logo.png
 /src/cmd/kofi.png
 /src/cmd/attribution.md
+**/*.log

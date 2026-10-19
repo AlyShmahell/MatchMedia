@@ -50,14 +50,15 @@ providers:
     require: api_key
     api_key: ""
     base: "https://api.themoviedb.org/3"
-    query: { api_key: "{api_key}", query: "{title}", include_adult: "false" }
-    items: results
     year: prefix4
     poster_prefix: "https://image.tmdb.org/t/p/w185"
     movie:
       types: [movie, anime]
-      url: "{base}/search/movie"
-      fields: { id: id, title: title, year: release_date, url: id, synopsis: overview, poster: poster_path, rating: vote_average, language: original_language, premiered: release_date }
+      search:
+        url: "{base}/search/movie"
+        query: { api_key: "{api_key}", query: "{title}", include_adult: "false" }
+        items: results
+        fields: { id: id, title: title, year: release_date, url: id, synopsis: overview, poster: poster_path, rating: vote_average, language: original_language, premiered: release_date }
       url_prefix: "https://www.themoviedb.org/movie/"
       nfo: movie
       uniqueid: tmdb-movie
@@ -74,8 +75,11 @@ providers:
           country: production_countries
     tv:
       types: [tv, anime]
-      url: "{base}/search/tv"
-      fields: { id: id, title: name, year: first_air_date, url: id, synopsis: overview, poster: poster_path, rating: vote_average, language: original_language, premiered: first_air_date }
+      search:
+        url: "{base}/search/tv"
+        query: { api_key: "{api_key}", query: "{title}", include_adult: "false" }
+        items: results
+        fields: { id: id, title: name, year: first_air_date, url: id, synopsis: overview, poster: poster_path, rating: vote_average, language: original_language, premiered: first_air_date }
       url_prefix: "https://www.themoviedb.org/tv/"
       nfo: tvshow
       uniqueid: tmdb-tv
@@ -111,10 +115,11 @@ providers:
     require: api_key
     api_key: ""
     base: "https://www.omdbapi.com"
-    url: "{base}"
-    query: { apikey: "{api_key}", s: "{title}", type: "movie" }
-    items: Search
-    fields: { id: imdbID, title: Title, year: Year, url: imdbID, poster: Poster }
+    search:
+      url: "{base}"
+      query: { apikey: "{api_key}", s: "{title}", type: "movie" }
+      items: Search
+      fields: { id: imdbID, title: Title, year: Year, url: imdbID, poster: Poster }
     url_prefix: "https://www.imdb.com/title/"
     nfo: movie
     uniqueid: imdb
@@ -125,13 +130,14 @@ providers:
   tvmaze:
     use: fallback
     types: [tv, anime, ""]
-    min_interval_ms: 128
     retries: 2
     base: "https://api.tvmaze.com"
-    url: "{base}/search/shows"
-    query: { q: "{title}" }
-    items: "$"
-    fields: { id: show.id, title: show.name, year: show.premiered, url: show.url, synopsis: show.summary, poster: show.image.medium, kind: show.type, language: show.language, rating: show.rating.average, runtime: show.runtime, premiered: show.premiered, ended: show.ended, genres: show.genres, country: show.network.country.name, network: show.network.name }
+    search:
+      min_interval_ms: 501
+      url: "{base}/search/shows"
+      query: { q: "{title}" }
+      items: "$"
+      fields: { id: show.id, title: show.name, year: show.premiered, url: show.url, synopsis: show.summary, poster: show.image.medium, kind: show.type, language: show.language, rating: show.rating.average, runtime: show.runtime, premiered: show.premiered, ended: show.ended, genres: show.genres, country: show.network.country.name, network: show.network.name }
     year: prefix4
     titles:
       url: "{base}/shows/{id}/akas"

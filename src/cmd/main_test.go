@@ -29,6 +29,7 @@ func TestCLIHelp(t *testing.T) {
 		"License",
 		"Attribution",
 		"-path",
+		"-log",
 		"-overlay",
 		"BSD 3-Clause",
 		"This product uses the TMDb API but is not endorsed or certified by TMDb.",
@@ -55,7 +56,8 @@ func TestCLIScan(t *testing.T) {
 		t.Fatal(err)
 	}
 	report := filepath.Join(root, "out.md")
-	cmd := exec.Command("go", "run", ".", "-path", root, "-mode", "nfo", "-report", report)
+	logPath := filepath.Join(root, "matchmedia.log")
+	cmd := exec.Command("go", "run", ".", "-path", root, "-mode", "nfo", "-report", report, "-log", logPath)
 	cmd.Dir = "."
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -64,6 +66,27 @@ func TestCLIScan(t *testing.T) {
 	want := "wrote " + report
 	if !strings.Contains(string(out), want) {
 		t.Fatalf("output %s", out)
+	}
+	logBody, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logged := string(logBody)
+	for _, part := range []string{
+		"MatchMedia",
+		"path: " + root,
+		"mode: nfo",
+		"scan",
+		"1 item",
+		"report",
+		"wrote " + report,
+	} {
+		if !strings.Contains(logged, part) {
+			t.Fatalf("log missing %q:\n%s", part, logged)
+		}
+	}
+	if strings.Contains(logged, "\nmatch\n") {
+		t.Fatalf("nfo unmatched should skip match:\n%s", logged)
 	}
 	body, err := os.ReadFile(report)
 	if err != nil {

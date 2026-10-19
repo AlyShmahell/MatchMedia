@@ -3,6 +3,9 @@ package match
 import (
 	"context"
 	"errors"
+	"iter"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -13,37 +16,101 @@ import (
 
 var ErrCandidateNotFound = errors.New("candidate not found")
 
-func Run(ctx context.Context, cfg *config.Config, jobs []Job) []Job {
-	return RunProgress(ctx, cfg, jobs, nil)
+func Run(ctx context.Context, client *fetch.Client, jobs []Job) iter.Seq[Job] {
+	return RunProgress(ctx, client, jobs, nil, nil)
 }
 
-func RunProgress(ctx context.Context, cfg *config.Config, jobs []Job, report func(done, total int, job Job)) []Job {
-	client := fetch.New(cfg)
-	n := cfg.Match.Workers
-	if n < 1 {
-		n = 1
+func Collect(seq iter.Seq[Job]) []Job {
+	if seq == nil {
+		return nil
 	}
-	parents := parentJobs(jobs)
-	batch := append(append([]Job(nil), parents...), jobs...)
+	var out []Job
+	for job := range seq {
+		out = append(out, job)
+	}
+	return out
+}
+
+func RunProgress(ctx context.Context, client *fetch.Client, jobs []Job, report func(done, total int, job Job), prefetch func(context.Context, Job)) iter.Seq[Job] {
+	return func(yield func(Job) bool) {
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		ch := make(chan Job, len(jobs)+len(parentJobs(jobs)))
+		go func() {
+			defer close(ch)
+			runProgress(ctx, client, jobs, report, prefetch, ch)
+		}()
+		for job := range ch {
+			if !yield(job) {
+				cancel()
+				for range ch {
+				}
+				return
+			}
+		}
+	}
+}
+
+func runProgress(ctx context.Context, client *fetch.Client, jobs []Job, report func(done, total int, job Job), prefetch func(context.Context, Job), emit chan<- Job) {
+	cfg := client.Config()
+	n := 1
+	if cfg != nil && cfg.Match.Workers > 0 {
+		n = cfg.Match.Workers
+	}
+	batch := append(append([]Job(nil), parentJobs(jobs)...), jobs...)
+	keys := make([]string, len(batch))
+	childKeys := map[string]struct{}{}
+	for _, j := range batch {
+		if isChild(j) {
+			childKeys[parentGroupKey(strings.TrimSpace(j.Parent), parentDir(j.Path))] = struct{}{}
+		}
+	}
+	left := map[string]int{}
+	for i, j := range batch {
+		keys[i] = batchGroupKey(j, childKeys, i)
+		left[keys[i]]++
+	}
+	got := make([]Job, len(batch))
 	var mu sync.Mutex
-	done := 0
+	var noted int
 	total := len(batch)
 	note := func(job Job) {
 		if report == nil {
 			return
 		}
 		mu.Lock()
-		done++
-		d, t := done, total
+		noted++
+		d := noted
 		mu.Unlock()
-		report(d, t, job)
+		report(d, total, job)
 	}
-	out := runBatch(ctx, cfg, client, n, batch, note)
-	return foldUnmatched(out)
-}
-
-func runBatch(ctx context.Context, cfg *config.Config, client *fetch.Client, n int, jobs []Job, note func(Job)) []Job {
-	out := make([]Job, len(jobs))
+	finish := func(idx int, job Job) {
+		mu.Lock()
+		got[idx] = job
+		key := keys[idx]
+		left[key]--
+		if left[key] > 0 {
+			mu.Unlock()
+			return
+		}
+		var members []Job
+		for i, k := range keys {
+			if k == key {
+				members = append(members, got[i])
+			}
+		}
+		mu.Unlock()
+		for _, folded := range foldUnmatched(members) {
+			if prefetch != nil {
+				prefetch(ctx, folded)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case emit <- folded:
+			}
+		}
+	}
 	jobsCh := make(chan int)
 	var wg sync.WaitGroup
 	wg.Add(n)
@@ -51,22 +118,39 @@ func runBatch(ctx context.Context, cfg *config.Config, client *fetch.Client, n i
 		go func() {
 			defer wg.Done()
 			for i := range jobsCh {
-				out[i] = runOne(ctx, cfg, client, jobs[i])
-				note(out[i])
+				job := runOne(ctx, cfg, client, batch[i])
+				note(job)
+				finish(i, job)
 			}
 		}()
 	}
-	for i := range jobs {
-		if jobs[i].Status == "matched" || jobs[i].Status == "unmatched" {
-			out[i] = jobs[i]
-			note(out[i])
+	for i := range batch {
+		if batch[i].Status == "matched" || batch[i].Status == "unmatched" {
+			note(batch[i])
+			finish(i, batch[i])
 			continue
 		}
-		jobsCh <- i
+		select {
+		case <-ctx.Done():
+			close(jobsCh)
+			wg.Wait()
+			return
+		case jobsCh <- i:
+		}
 	}
 	close(jobsCh)
 	wg.Wait()
-	return out
+}
+
+func batchGroupKey(j Job, childKeys map[string]struct{}, index int) string {
+	if isChild(j) {
+		return parentGroupKey(strings.TrimSpace(j.Parent), parentDir(j.Path))
+	}
+	key := parentGroupKey(j.Title, filepath.Clean(j.Path))
+	if _, ok := childKeys[key]; ok {
+		return key
+	}
+	return "job\t" + strconv.Itoa(index)
 }
 
 func runOne(ctx context.Context, cfg *config.Config, client *fetch.Client, job Job) Job {
@@ -143,7 +227,7 @@ func attachCatalog(client *fetch.Client, ctx context.Context, job Job, cand Cand
 	return job
 }
 
-func Select(ctx context.Context, cfg *config.Config, job Job, provider, id string) (Job, error) {
+func Select(ctx context.Context, client *fetch.Client, job Job, provider, id string) (Job, error) {
 	var pick *Candidate
 	for i := range job.Candidates {
 		if job.Candidates[i].Provider == provider && job.Candidates[i].ID == id {
@@ -157,7 +241,6 @@ func Select(ctx context.Context, cfg *config.Config, job Job, provider, id strin
 	job.Match = pick
 	job.Status = "matched"
 	job.Error = ""
-	client := fetch.New(cfg)
 	client.Detail(ctx, job.Query(), job.Match)
 	return attachCatalog(client, ctx, job, *job.Match), nil
 }
