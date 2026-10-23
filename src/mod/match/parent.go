@@ -13,7 +13,13 @@ func failedQuery(j Job) bool {
 
 func isChild(j Job) bool {
 	p := strings.TrimSpace(j.Parent)
-	return p != "" && rank.TitleNorm(p) != rank.TitleNorm(j.Title)
+	if p == "" {
+		return false
+	}
+	if base := strings.TrimSpace(filepath.Base(j.Path)); base != "" && base != "." && base == p {
+		return false
+	}
+	return rank.TitleNorm(p) != rank.TitleNorm(j.Title)
 }
 
 func ChildFail(j Job) bool {

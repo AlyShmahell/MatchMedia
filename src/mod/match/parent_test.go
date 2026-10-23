@@ -80,6 +80,42 @@ func TestParentJobsSkipExistingPath(t *testing.T) {
 	}
 }
 
+func TestParentJobsIgnoresRewrittenShowTitle(t *testing.T) {
+	show := Job{
+		Title:  "Anohana: The Flower We Saw That Day",
+		Parent: "Anohana",
+		Path:   "/library/Anohana",
+		Kind:   "show",
+		Status: "matched",
+		Files:  []JobFile{{Path: "e01.mkv"}},
+	}
+	if isChild(show) {
+		t.Fatal("show folder is not a child")
+	}
+	if got := parentJobs([]Job{show}); len(got) != 0 {
+		t.Fatalf("no library-root parent: %#v", got)
+	}
+}
+
+func TestParentJobsKeepsReleaseFolder(t *testing.T) {
+	release := Job{
+		Title:  "Tsukimichi Moonlit Fantasy",
+		Parent: "Tsukimichi",
+		Path:   "/library/Tsukimichi/[Tag] Tsukimichi",
+		Kind:   "show",
+		Status: "pending",
+		Files:  []JobFile{{Path: "e01.mkv"}},
+	}
+	got := parentJobs([]Job{release})
+	if len(got) != 1 {
+		t.Fatalf("parents %d: %#v", len(got), got)
+	}
+	p := got[0]
+	if p.Title != "Tsukimichi" || p.Parent != "Tsukimichi" || p.Path != filepath.Clean("/library/Tsukimichi") {
+		t.Fatalf("parent %#v", p)
+	}
+}
+
 func TestFoldUnmatchedIntoParent(t *testing.T) {
 	s01 := Job{
 		Title:  "S01",
