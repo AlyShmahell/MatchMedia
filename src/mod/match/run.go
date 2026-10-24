@@ -157,6 +157,17 @@ func runOne(ctx context.Context, cfg *config.Config, client *fetch.Client, job J
 	if job.Status == "matched" || job.Status == "unmatched" {
 		return job
 	}
+	if client != nil && len(job.Requests) > 0 {
+		if hit, seasons, ok := client.Replay(ctx, job.Query(), job.Requests); ok {
+			job.Match = &hit
+			job.Status = "matched"
+			job.Ranker = "replay"
+			job.Catalog = seasons
+			job.CatalogFor = hit.Key()
+			job.Error = ""
+			return MapFilesOntoCatalog(job)
+		}
+	}
 	job.Error = ""
 	q := job.Query()
 	cands, errs, ok := search(ctx, client, q, job.Type == "")
@@ -218,7 +229,10 @@ func applyMatch(cfg *config.Config, client *fetch.Client, ctx context.Context, j
 }
 
 func attachCatalog(client *fetch.Client, ctx context.Context, job Job, cand Candidate) Job {
-	cat, forKey := client.Catalog(ctx, job.Query(), cand)
+	cat, forKey, reqs := client.Catalog(ctx, job.Query(), cand)
+	if job.Match != nil && len(reqs) > 0 {
+		job.Match.Requests = append(job.Match.Requests, reqs...)
+	}
 	if cat != nil {
 		job.Catalog = cat
 		job.CatalogFor = forKey

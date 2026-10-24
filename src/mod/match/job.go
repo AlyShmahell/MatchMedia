@@ -41,6 +41,7 @@ type Job struct {
 	Candidates []Candidate     `json:"candidates,omitempty"`
 	Catalog    []CatalogSeason `json:"catalog"`
 	CatalogFor string          `json:"catalog_for,omitempty"`
+	Requests   []rank.Request  `json:"requests,omitempty"`
 	Error      string          `json:"error,omitempty"`
 }
 

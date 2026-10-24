@@ -25,9 +25,10 @@ type detailFlight struct {
 }
 
 type catalogFlight struct {
-	wg      sync.WaitGroup
-	seasons []Season
-	forKey  string
+	wg       sync.WaitGroup
+	seasons  []Season
+	forKey   string
+	requests []rank.Request
 }
 
 type memo struct {
@@ -85,20 +86,20 @@ func (m *memo) doDetail(key string, fn func() (rank.Hit, bool)) (rank.Hit, bool)
 	return copyHit(e.hit), e.ok
 }
 
-func (m *memo) doCatalog(key string, fn func() ([]Season, string)) ([]Season, string) {
+func (m *memo) doCatalog(key string, fn func() ([]Season, string, []rank.Request)) ([]Season, string, []rank.Request) {
 	m.mu.Lock()
 	if e, ok := m.catalog[key]; ok {
 		m.mu.Unlock()
 		e.wg.Wait()
-		return copySeasons(e.seasons), e.forKey
+		return copySeasons(e.seasons), e.forKey, copyRequests(e.requests)
 	}
 	e := &catalogFlight{}
 	e.wg.Add(1)
 	m.catalog[key] = e
 	m.mu.Unlock()
-	e.seasons, e.forKey = fn()
+	e.seasons, e.forKey, e.requests = fn()
 	e.wg.Done()
-	return copySeasons(e.seasons), e.forKey
+	return copySeasons(e.seasons), e.forKey, copyRequests(e.requests)
 }
 
 func copySearch(v searchVal) searchVal {
@@ -124,7 +125,17 @@ func copyHit(h rank.Hit) rank.Hit {
 		}
 		h.Attrs = a
 	}
+	h.Requests = copyRequests(h.Requests)
 	return h
+}
+
+func copyRequests(in []rank.Request) []rank.Request {
+	if in == nil {
+		return nil
+	}
+	out := make([]rank.Request, len(in))
+	copy(out, in)
+	return out
 }
 
 func copySeasons(in []Season) []Season {
@@ -165,4 +176,26 @@ func applyDetail(dst *rank.Hit, src rank.Hit) {
 	if len(src.Attrs) > 0 {
 		dst.Attrs = overlayAttrs(dst.Attrs, src.Attrs)
 	}
+	if len(src.Requests) > 0 {
+		dst.Requests = mergeRequests(dst.Requests, src.Requests)
+	}
+}
+
+func mergeRequests(dst, src []rank.Request) []rank.Request {
+	out := append([]rank.Request{}, dst...)
+	for _, r := range src {
+		if !hasRequest(out, r) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func hasRequest(reqs []rank.Request, r rank.Request) bool {
+	for _, have := range reqs {
+		if have.Section == r.Section && have.Provider == r.Provider && have.NFO == r.NFO && have.URL == r.URL && have.Query == r.Query && have.Season == r.Season {
+			return true
+		}
+	}
+	return false
 }

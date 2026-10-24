@@ -209,9 +209,15 @@ func applyMode(jobs []match.Job, mode string) []match.Job {
 		case ModeChanges:
 			if sidecar.Complete(job, true) {
 				out = append(out, sidecar.FromSidecar(job))
-			} else {
-				out = append(out, job)
+				continue
 			}
+			if sidecar.Complete(job, false) {
+				job = sidecar.Fill(job)
+				job.Requests = sidecar.SavedRequests(job)
+				out = append(out, job)
+				continue
+			}
+			out = append(out, job)
 		case ModeMissing:
 			if sidecar.TitleNFO(job) {
 				continue

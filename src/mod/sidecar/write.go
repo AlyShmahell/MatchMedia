@@ -41,7 +41,7 @@ func WriteProgress(ctx context.Context, client *fetch.Client, mode string, jobs 
 		if !allowWrite(out[i], mode) {
 			continue
 		}
-		wrote, st, err := writeJob(ctx, client, out[i], *out[i].Match, replacePoster(mode))
+		wrote, st, err := writeJob(ctx, client, out[i], *out[i].Match, replacePoster(mode), keepTitle(mode))
 		if err != nil {
 			return nil, all, err
 		}
@@ -65,14 +65,23 @@ func allowWrite(job match.Job, mode string) bool {
 	case "nfo", "local":
 		return false
 	case "changes", "matchmedia-changes":
-		if job.NFOPath != "" && job.PosterPath != "" {
-			return false
+		if Complete(job, false) {
+			return job.Kind == "show" && !Complete(job, true) && job.Match != nil && job.Match.Provider != "" && job.Match.ID != ""
 		}
-		return !Complete(job, false)
+		return true
 	case "missing":
 		return !TitleNFO(job)
 	default:
 		return true
+	}
+}
+
+func keepTitle(mode string) bool {
+	switch strings.TrimSpace(mode) {
+	case "changes", "matchmedia-changes":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -121,10 +130,13 @@ func prefetchPoster(ctx context.Context, client *fetch.Client, provider, url, di
 	_, _, _ = client.Bytes(ctx, url, provider)
 }
 
-func writeJob(ctx context.Context, client *fetch.Client, job match.Job, cand rank.Hit, replace bool) (match.Job, Stats, error) {
+func writeJob(ctx context.Context, client *fetch.Client, job match.Job, cand rank.Hit, replace, keep bool) (match.Job, Stats, error) {
 	var st Stats
 	if cand.Provider == "" || cand.ID == "" || strings.TrimSpace(job.Path) == "" {
 		return job, st, nil
+	}
+	if keep && Complete(job, false) {
+		return writeKept(ctx, client, job, cand)
 	}
 	info, err := os.Stat(job.Path)
 	if err != nil {
@@ -179,6 +191,53 @@ func writeJob(ctx context.Context, client *fetch.Client, job match.Job, cand ran
 				}
 				stampEpisode(job.Files, p, nfo, thumb)
 				st.EpisodeNFO++
+				if saved {
+					st.Posters++
+				}
+			}
+		}
+	}
+	return job, st, nil
+}
+
+func writeKept(ctx context.Context, client *fetch.Client, job match.Job, cand rank.Hit) (match.Job, Stats, error) {
+	var st Stats
+	nfo := job.NFOPath
+	if nfo == "" {
+		if path, _, ok := titleSidecar(job); ok {
+			nfo = path
+			job.NFOPath = path
+		}
+	}
+	if job.Ranker != "replay" && len(cand.Requests) > 0 && nfo != "" {
+		wrote, err := spliceURLs(nfo, cand.Requests)
+		if err != nil {
+			return job, st, err
+		}
+		if wrote {
+			st.TitleNFO++
+		}
+	}
+	if job.Kind != "show" || job.Catalog == nil || job.CatalogFor != cand.Key() {
+		return job, st, nil
+	}
+	for _, s := range job.Catalog {
+		for _, e := range s.Episodes {
+			for _, p := range episodePaths(e) {
+				dir := filepath.Dir(p)
+				base := trimExt(filepath.Base(p))
+				nfo := filepath.Join(dir, base+".nfo")
+				if !episodeNFOOK(p) {
+					if err := writeEpisodeNFO(nfo, ident(client.Config(), cand), s.Number, e); err != nil {
+						return job, st, err
+					}
+					st.EpisodeNFO++
+				}
+				thumb, saved := savePoster(ctx, client, cand.Provider, e.Poster, dir, base+"-thumb", false)
+				if thumb == "" {
+					thumb = thumbPath(p)
+				}
+				stampEpisode(job.Files, p, nfo, thumb)
 				if saved {
 					st.Posters++
 				}

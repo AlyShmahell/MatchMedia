@@ -16,6 +16,17 @@ type Query struct {
 	Type   string
 }
 
+// Request is a provider call the pipeline already made.
+// Query is the request query with the API key removed.
+type Request struct {
+	Section  string
+	Provider string
+	NFO      string
+	URL      string
+	Query    string
+	Season   string
+}
+
 type Hit struct {
 	Provider string
 	ID       string
@@ -30,6 +41,7 @@ type Hit struct {
 	QueryCov float64
 	Jaccard  float64
 	Score    float64
+	Requests []Request
 }
 
 func (h Hit) Key() string {

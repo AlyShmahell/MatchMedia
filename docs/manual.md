@@ -52,11 +52,11 @@ Do not filter files by extra or kind labels. `files[]` keeps every video in the 
 Pass the mode to `scan.Run`.
 
 1. `rescan` — Ignore sidecars. Send every title to providers.
-2. `changes` — Keep a complete sidecar as matched. Send incomplete and missing titles to providers.
+2. `changes` — A title NFO and poster with saved provider URLs are replayed. A failed replay, or a title with no saved URLs, is searched once. Missing episode NFOs and stills are written without replacing the title text or poster. A show whose episode NFOs are already present stays matched.
 3. `missing` — Skip a title that has a title NFO. Send only titles with no title NFO.
 4. `nfo` — Do not call providers. A complete sidecar is matched. An incomplete sidecar is unmatched.
 
-A complete sidecar is a title NFO plus a poster. For `changes`, a show also needs an episode NFO for each file when the default episode check is on.
+A complete sidecar is a title NFO plus a poster. For `changes`, saved `<urls>` are the provider requests to replay. A show writes only episode NFOs and stills that are not already beside the video.
 
 ## Match
 

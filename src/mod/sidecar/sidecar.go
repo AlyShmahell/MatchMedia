@@ -13,6 +13,35 @@ import (
 
 var posterExt = []string{".jpg", ".png", ".jpeg"}
 
+func SavedRequests(job match.Job) []rank.Request {
+	nfo, _, ok := titleSidecar(job)
+	if !ok {
+		return nil
+	}
+	meta, err := readSidecarNFO(nfo)
+	if err != nil {
+		return nil
+	}
+	return meta.requests
+}
+
+func requestsOf(in []savedURL) []rank.Request {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]rank.Request, 0, len(in))
+	for _, u := range in {
+		raw := strings.TrimSpace(u.Value)
+		if raw == "" || strings.TrimSpace(u.Section) == "" {
+			continue
+		}
+		out = append(out, rank.Request{
+			Section: u.Section, Provider: u.Provider, NFO: u.NFO, URL: raw, Query: u.Query, Season: u.Season,
+		})
+	}
+	return out
+}
+
 func TitleNFO(job match.Job) bool {
 	nfo, _, ok := titleSidecar(job)
 	return ok && fileExists(nfo)
@@ -246,6 +275,7 @@ type nfoMeta struct {
 	root, title, year, plot, provider, id, season, episode string
 	runtime, rating, language, premiered, ended            string
 	genres, countries, networks                            []string
+	requests                                               []rank.Request
 }
 
 func (m nfoMeta) attrs() map[string]string {
@@ -294,6 +324,9 @@ func readSidecarNFO(path string) (nfoMeta, error) {
 			Type  string `xml:"type,attr"`
 			Value string `xml:",chardata"`
 		} `xml:"uniqueid"`
+		URLs struct {
+			URL []savedURL `xml:"url"`
+		} `xml:"urls"`
 	}
 	if err = xml.Unmarshal(b, &n); err != nil {
 		return nfoMeta{}, err
@@ -304,7 +337,7 @@ func readSidecarNFO(path string) (nfoMeta, error) {
 			root: n.XMLName.Local, title: n.Title, year: n.Year, plot: n.Plot,
 			provider: n.UniqueID.Type, id: n.UniqueID.Value, season: n.Season, episode: n.Episode,
 			runtime: n.Runtime, rating: n.Rating, language: n.Language, premiered: n.Premiered, ended: n.Ended,
-			genres: n.Genre, countries: n.Country, networks: n.Network,
+			genres: n.Genre, countries: n.Country, networks: n.Network, requests: requestsOf(n.URLs.URL),
 		}, nil
 	default:
 		return nfoMeta{}, os.ErrInvalid

@@ -206,7 +206,8 @@ func (c *Client) hydrateTitles(ctx context.Context, name string, spec config.Pro
 
 func (c *Client) fetchTitleAkas(ctx context.Context, name string, spec config.Provider, q rank.Query, cand *rank.Hit, jobContent map[string]struct{}, stop map[string]struct{}) error {
 	tl := spec.Titles
-	raw, err := providerGET(ctx, c.http.forSpec(spec), tl.URL, tl.Query, varsFor(spec, q, cand.ID), endpointKey(name, spec), func(ctx context.Context) error {
+	vars := varsFor(spec, q, cand.ID)
+	raw, err := providerGET(ctx, c.http.forSpec(spec), tl.URL, tl.Query, vars, endpointKey(name, spec), func(ctx context.Context) error {
 		return sectionPace(ctx, name, spec, "titles", tl.MinIntervalMS)
 	})
 	if err != nil {
@@ -216,6 +217,7 @@ func (c *Client) fetchTitleAkas(ctx context.Context, name string, spec config.Pr
 	if err != nil {
 		return err
 	}
+	cand.Requests = append(cand.Requests, savedRequest("titles", name, spec.NFO, tl.URL, "", tl.Query, vars))
 	path := tl.Fields["title"]
 	if path == "" {
 		path = "name"
@@ -254,10 +256,12 @@ func (c *Client) Detail(ctx context.Context, q rank.Query, cand *rank.Hit) {
 	}
 	hit, ok := c.cache.doDetail(idKey(cand.Provider, cand.ID), func() (rank.Hit, bool) {
 		src := *cand
+		src.Requests = append([]rank.Request{}, cand.Requests...)
 		if err := sectionPace(ctx, cand.Provider, spec, "detail", spec.Detail.MinIntervalMS); err != nil {
 			return src, false
 		}
-		raw, err := providerGET(ctx, c.http.forSpec(spec), spec.Detail.URL, spec.Detail.Query, varsFor(spec, q, cand.ID), endpointKey(cand.Provider, spec), nil)
+		vars := varsFor(spec, q, cand.ID)
+		raw, err := providerGET(ctx, c.http.forSpec(spec), spec.Detail.URL, spec.Detail.Query, vars, endpointKey(cand.Provider, spec), nil)
 		if err != nil {
 			return src, false
 		}
@@ -265,6 +269,7 @@ func (c *Client) Detail(ctx context.Context, q rank.Query, cand *rank.Hit) {
 		if err := json.Unmarshal(raw, &obj); err != nil {
 			return src, false
 		}
+		src.Requests = append(src.Requests, savedRequest("detail", cand.Provider, spec.NFO, spec.Detail.URL, "", spec.Detail.Query, vars))
 		mergeDetail(&src, spec.Detail, obj, c.cfg.Match.SynopsisLimit)
 		return src, true
 	})

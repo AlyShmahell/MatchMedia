@@ -195,6 +195,90 @@ func TestWriteShowDirEpisodeNFO(t *testing.T) {
 	}
 }
 
+func TestChangesWritesEpisodeGaps(t *testing.T) {
+	cfg, err := config.New("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	video := filepath.Join(dir, "Show.S01E01.mkv")
+	keepVideo := filepath.Join(dir, "Show.S01E02.mkv")
+	if err := os.WriteFile(video, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keepVideo, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	kept := `<episodedetails><title>Stay</title></episodedetails>`
+	if err := os.WriteFile(filepath.Join(dir, "Show.S01E02.nfo"), []byte(kept), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	nfo := filepath.Join(dir, "tvshow.nfo")
+	body := "<tvshow><title>Keep Title</title><plot>Keep Plot</plot></tvshow>\n"
+	if err := os.WriteFile(nfo, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "poster.jpg"), []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	hit := rank.Hit{
+		Provider: "tmdb", ID: "7", NFO: "tvshow", Title: "Other", Synopsis: "Other plot", UniqueID: "tmdb-tv",
+		Requests: []rank.Request{
+			{Section: "detail", Provider: "tmdb", NFO: "tvshow", URL: "https://api.themoviedb.org/3/tv/7"},
+			{Section: "detail", Provider: "omdb", NFO: "movie", URL: "https://www.omdbapi.com", Query: "i=tt0133093&plot=short"},
+		},
+	}
+	job := match.Job{
+		Path: dir, Kind: "show", Status: "matched", Ranker: "set", Match: &hit, CatalogFor: hit.Key(),
+		Files: []match.JobFile{{Path: video, Season: "1", Episode: "1"}, {Path: keepVideo, Season: "1", Episode: "2"}},
+		Catalog: []match.CatalogSeason{{
+			Number: "1",
+			Episodes: []fetch.Episode{
+				{Number: "1", Title: "Pilot", Path: video},
+				{Number: "2", Title: "Next", Path: keepVideo},
+			},
+		}},
+	}
+	out, st, err := WriteProgress(context.Background(), fetch.New(cfg), "changes", []match.Job{job}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.EpisodeNFO != 1 || st.Posters != 0 || st.TitleNFO != 1 {
+		t.Fatalf("stats %+v", st)
+	}
+	got, err := os.ReadFile(nfo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(got)
+	for _, want := range []string{"<title>Keep Title</title>", "<plot>Keep Plot</plot>", "https://api.themoviedb.org/3/tv/7", `query="i=tt0133093&amp;plot=short"`} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("missing %s in %s", want, text)
+		}
+	}
+	if strings.Contains(text, "api_key") || strings.Contains(text, "apikey") {
+		t.Fatalf("key in %s", text)
+	}
+	if strings.Contains(text, "Other plot") {
+		t.Fatalf("rewrote plot %s", text)
+	}
+	poster, err := os.ReadFile(filepath.Join(dir, "poster.jpg"))
+	if err != nil || string(poster) != "keep" {
+		t.Fatalf("poster %q %v", poster, err)
+	}
+	ep, err := os.ReadFile(filepath.Join(dir, "Show.S01E01.nfo"))
+	if err != nil || !strings.Contains(string(ep), "<title>Pilot</title>") {
+		t.Fatalf("episode %s %v", ep, err)
+	}
+	stay, err := os.ReadFile(filepath.Join(dir, "Show.S01E02.nfo"))
+	if err != nil || string(stay) != kept {
+		t.Fatalf("kept episode %s", stay)
+	}
+	if out[0].NFOPath != nfo {
+		t.Fatalf("nfo path %q", out[0].NFOPath)
+	}
+}
+
 func TestWriteSkipsEmptyPath(t *testing.T) {
 	cfg, err := config.New("")
 	if err != nil {

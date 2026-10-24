@@ -35,18 +35,18 @@ type Season struct {
 	Episodes []Episode `json:"episodes,omitempty"`
 }
 
-func (c *Client) Catalog(ctx context.Context, q rank.Query, cand rank.Hit) ([]Season, string) {
+func (c *Client) Catalog(ctx context.Context, q rank.Query, cand rank.Hit) ([]Season, string, []rank.Request) {
 	spec, ok := c.cfg.Endpoint(cand.Provider, cand.NFO)
 	if !ok || spec.Catalog == nil {
-		return nil, ""
+		return nil, "", nil
 	}
-	return c.cache.doCatalog(idKey(cand.Provider, cand.ID), func() ([]Season, string) {
+	return c.cache.doCatalog(idKey(cand.Provider, cand.ID), func() ([]Season, string, []rank.Request) {
 		forKey := cand.Key()
-		seasons, err := c.loadCatalog(ctx, cand.Provider, spec, q, cand.ID)
+		seasons, reqs, err := c.loadCatalog(ctx, cand.Provider, spec, q, cand.ID)
 		if err != nil || seasons == nil {
-			return []Season{}, forKey
+			return []Season{}, forKey, reqs
 		}
-		return seasons, forKey
+		return seasons, forKey, reqs
 	})
 }
 
@@ -55,15 +55,17 @@ func (c *Client) HasCatalog(cand rank.Hit) bool {
 	return ok && spec.Catalog != nil
 }
 
-func (c *Client) loadCatalog(ctx context.Context, name string, spec config.Provider, q rank.Query, showID string) ([]Season, error) {
+func (c *Client) loadCatalog(ctx context.Context, name string, spec config.Provider, q rank.Query, showID string) ([]Season, []rank.Request, error) {
 	cat := spec.Catalog
 	limit := c.cfg.Match.SynopsisLimit
 	seasons := make([]Season, 0)
+	var reqs []rank.Request
 	if cat.Seasons != nil && cat.Seasons.URL != "" {
-		items, err := c.fetchCatalogList(ctx, name, spec, q, cat.Seasons, "catalog/seasons", showID, "", "")
+		items, req, err := c.fetchCatalogList(ctx, name, spec, q, cat.Seasons, "catalog/seasons", showID, "", "")
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
+		reqs = append(reqs, req)
 		for _, item := range items {
 			s, ok := seasonFrom(spec, cat.Seasons, item, limit)
 			if ok {
@@ -73,7 +75,7 @@ func (c *Client) loadCatalog(ctx context.Context, name string, spec config.Provi
 		sortCatalogSeasons(seasons)
 	}
 	if cat.Episodes == nil || cat.Episodes.URL == "" {
-		return seasons, nil
+		return seasons, reqs, nil
 	}
 	if perSeasonURL(cat.Episodes.URL) {
 		for i := range seasons {
@@ -83,21 +85,23 @@ func (c *Client) loadCatalog(ctx context.Context, name string, spec config.Provi
 			if strings.Contains(cat.Episodes.URL, "{season_id}") && seasons[i].ID == "" {
 				continue
 			}
-			items, err := c.fetchCatalogList(ctx, name, spec, q, cat.Episodes, "catalog/episodes", showID, seasons[i].Number, seasons[i].ID)
+			items, req, err := c.fetchCatalogList(ctx, name, spec, q, cat.Episodes, "catalog/episodes", showID, seasons[i].Number, seasons[i].ID)
 			if err != nil {
 				if ctx.Err() != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				continue
 			}
+			reqs = append(reqs, req)
 			seasons[i].Episodes = episodesFrom(spec, cat.Episodes, items, limit)
 		}
-		return seasons, nil
+		return seasons, reqs, nil
 	}
-	items, err := c.fetchCatalogList(ctx, name, spec, q, cat.Episodes, "catalog/episodes", showID, "", "")
+	items, req, err := c.fetchCatalogList(ctx, name, spec, q, cat.Episodes, "catalog/episodes", showID, "", "")
 	if err != nil {
-		return seasons, nil
+		return seasons, reqs, nil
 	}
+	reqs = append(reqs, req)
 	grouped := map[string][]Episode{}
 	for _, item := range items {
 		ep, ok := episodeFrom(spec, cat.Episodes, item, limit)
@@ -107,12 +111,12 @@ func (c *Client) loadCatalog(ctx context.Context, name string, spec config.Provi
 		key := episodeSeasonKey(cat.Episodes, item)
 		grouped[key] = append(grouped[key], ep)
 	}
-	return attachGroupedEpisodes(seasons, grouped), nil
+	return attachGroupedEpisodes(seasons, grouped), reqs, nil
 }
 
-func (c *Client) fetchCatalogList(ctx context.Context, name string, spec config.Provider, q rank.Query, list *config.CatalogList, section, showID, season, seasonID string) ([]any, error) {
+func (c *Client) fetchCatalogList(ctx context.Context, name string, spec config.Provider, q rank.Query, list *config.CatalogList, section, showID, season, seasonID string) ([]any, rank.Request, error) {
 	if err := sectionPace(ctx, name, spec, section, list.MinIntervalMS); err != nil {
-		return nil, err
+		return nil, rank.Request{}, err
 	}
 	v := varsFor(spec, q, showID)
 	v["season"] = season
@@ -120,14 +124,14 @@ func (c *Client) fetchCatalogList(ctx context.Context, name string, spec config.
 	key := endpointKey(name, spec)
 	raw, err := providerGET(ctx, c.http.forSpec(spec), list.URL, list.Query, v, key, nil)
 	if err != nil {
-		return nil, err
+		return nil, rank.Request{}, err
 	}
 	items, err := extractItems(raw, list.Items)
 	if err != nil {
 		c.trip(key)
-		return nil, err
+		return nil, rank.Request{}, err
 	}
-	return items, nil
+	return items, savedRequest(section, name, spec.NFO, list.URL, season, list.Query, v), nil
 }
 
 func perSeasonURL(u string) bool {

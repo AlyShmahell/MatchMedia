@@ -149,6 +149,61 @@ func TestNormalizeMode(t *testing.T) {
 	}
 }
 
+func TestChangesUsesSavedURLs(t *testing.T) {
+	cfg, err := config.New("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	show := filepath.Join(root, "Grimgar")
+	touch(t, filepath.Join(show, "Season 1", "Grimgar S01E01.mkv"))
+	if err := os.WriteFile(filepath.Join(show, "poster.jpg"), []byte("art"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	nfo := "<tvshow><title>Hai to Gensou no Grimgar</title><year>2016</year><plot>A plot</plot></tvshow>"
+	if err := os.WriteFile(filepath.Join(show, "tvshow.nfo"), []byte(nfo), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	missing, err := Run(cfg, root, ModeMissing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(missing) != 0 {
+		t.Fatalf("missing %#v", missing)
+	}
+	pending, err := Run(cfg, root, ModeChanges)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 1 || pending[0].Status != "pending" || pending[0].Title != "Hai to Gensou no Grimgar" || len(pending[0].Requests) != 0 {
+		t.Fatalf("no urls %#v", pending)
+	}
+	with := `<tvshow><title>Hai to Gensou no Grimgar</title><year>2016</year><urls><url section="detail" provider="omdb" nfo="movie" query="i=tt0133093&amp;plot=short">https://www.omdbapi.com</url></urls></tvshow>`
+	if err := os.WriteFile(filepath.Join(show, "tvshow.nfo"), []byte(with), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Run(cfg, root, ModeChanges)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Status != "pending" || len(got[0].Requests) != 1 {
+		t.Fatalf("saved %#v", got)
+	}
+	if got[0].Requests[0].URL != "https://www.omdbapi.com" || got[0].Requests[0].Query != "i=tt0133093&plot=short" {
+		t.Fatalf("request %#v", got[0].Requests[0])
+	}
+	if err := os.WriteFile(filepath.Join(show, "Season 1", "Grimgar S01E01.nfo"), []byte("<episodedetails><title>E</title></episodedetails>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	done, err := Run(cfg, root, ModeChanges)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(done) != 1 || done[0].Status != "matched" {
+		t.Fatalf("complete %#v", done)
+	}
+}
+
 func touch(t *testing.T, path string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
