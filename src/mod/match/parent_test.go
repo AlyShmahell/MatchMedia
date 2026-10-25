@@ -102,7 +102,7 @@ func TestParentJobsIgnoresRewrittenShowTitle(t *testing.T) {
 	}
 	punct := Job{
 		Title:  "An Adventurer's Daily Grind at Age 29",
-		Parent: "An Adventure s Daily Grind at Age 29",
+		Parent: "An Adventure's Daily Grind at Age 29",
 		Path:   "/library/An Adventure's Daily Grind at Age 29",
 		Kind:   "show",
 		Status: "matched",

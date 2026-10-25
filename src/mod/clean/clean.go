@@ -29,18 +29,34 @@ func Apply(cfg *config.Config, name string) string {
 		}
 		return rewriteParen(block, tags)
 	})
-	s = dropTrailing(s)
+	s = dropTrailing(s, tags)
 	s = stripTags(s, tags)
 	s = separateBlocks(s)
 	return strings.TrimSpace(spaceRe.ReplaceAllString(s, " "))
 }
 
-func dropTrailing(s string) string {
-	m := trailRe.FindStringSubmatch(s)
-	if len(m) != 2 || trailSE.MatchString(m[1]) {
+func dropTrailing(s string, tags map[string]struct{}) string {
+	loc := trailRe.FindStringSubmatchIndex(s)
+	if loc == nil || trailSE.MatchString(s[loc[2]:loc[3]]) {
 		return s
 	}
-	return trailRe.ReplaceAllString(s, "")
+	word := gluedWord(s[:loc[0]])
+	if _, ok := tags[strings.ToLower(word)]; !ok {
+		return s
+	}
+	return strings.TrimRight(s[:loc[0]], " \t")
+}
+
+func gluedWord(left string) string {
+	left = strings.TrimRight(left, " \t")
+	if left == "" {
+		return ""
+	}
+	i := len(left)
+	for i > 0 && isAlnum(left[i-1]) {
+		i--
+	}
+	return left[i:]
 }
 
 func separateBlocks(s string) string {
@@ -211,28 +227,50 @@ func closeBlock(s string, i int) int {
 	return i
 }
 
-type rawWord struct {
-	text string
+type wordSpan struct {
+	start, end int
+	text       string
 }
 
 func stripFree(s string, tags map[string]struct{}) string {
-	var words []rawWord
-	var cur strings.Builder
-	flush := func() {
-		if cur.Len() == 0 {
-			return
-		}
-		words = append(words, rawWord{text: cur.String()})
-		cur.Reset()
+	words := scanWords(s)
+	if len(words) == 0 {
+		return s
 	}
-	for _, r := range s {
-		if (r >= '0' && r <= '9') || (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') {
-			cur.WriteRune(r)
+	drop := markTags(words, tags)
+	var b strings.Builder
+	writeGap(&b, s[:words[0].start], false, false, true, !drop[0])
+	for i, w := range words {
+		if i > 0 {
+			writeGap(&b, s[words[i-1].end:w.start], true, !drop[i-1], true, !drop[i])
+		}
+		if !drop[i] {
+			b.WriteString(w.text)
+		}
+	}
+	last := words[len(words)-1]
+	writeGap(&b, s[last.end:], true, !drop[len(words)-1], false, false)
+	return b.String()
+}
+
+func scanWords(s string) []wordSpan {
+	var words []wordSpan
+	for i := 0; i < len(s); {
+		if !isAlnum(s[i]) {
+			i++
 			continue
 		}
-		flush()
+		j := i + 1
+		for j < len(s) && isAlnum(s[j]) {
+			j++
+		}
+		words = append(words, wordSpan{start: i, end: j, text: s[i:j]})
+		i = j
 	}
-	flush()
+	return words
+}
+
+func markTags(words []wordSpan, tags map[string]struct{}) []bool {
 	drop := make([]bool, len(words))
 	for i := 0; i < len(words); {
 		matched := 0
@@ -255,11 +293,25 @@ func stripFree(s string, tags map[string]struct{}) string {
 		}
 		i += matched
 	}
-	var kept []string
-	for i, w := range words {
-		if !drop[i] {
-			kept = append(kept, w.text)
+	return drop
+}
+
+func writeGap(b *strings.Builder, gap string, leftExists, leftKept, rightExists, rightKept bool) {
+	if gap == "" {
+		return
+	}
+	keptSide := (leftExists && leftKept) || (rightExists && rightKept)
+	droppedSide := (leftExists && !leftKept) || (rightExists && !rightKept)
+	if !keptSide {
+		return
+	}
+	if !droppedSide {
+		b.WriteString(gap)
+		return
+	}
+	for i := 0; i < len(gap); i++ {
+		if gap[i] == ' ' || gap[i] == '\t' {
+			b.WriteByte(gap[i])
 		}
 	}
-	return strings.Join(kept, " ")
 }

@@ -104,7 +104,7 @@ for job := range match.Run(ctx, client, jobs) {
 
 Rank uses Jaccard of title tokens plus a synopsis lift. Auto-match uses `match.min_score` and `match.min_margin`. Trailing `(YYYY)` is stripped from the search title; identical searches share one provider request. An empty full-title search retries word n-grams (n≥3) and ranks those hits against the original title.
 
-Comparison names drop the configured `clean.tags`, one-word brackets, parentheses whose words are all tags, a trailing hyphen token, and 8-digit checksums before match and before the fold reads a season or episode. A four-digit year, a one- or two-digit parenthesis, and any block in `clean.keep` stay. The path on disk is unchanged.
+Comparison names drop the configured `clean.tags`, one-word brackets, parentheses whose words are all tags, a trailing hyphen token glued to a tag, and 8-digit checksums before match and before the fold reads a season or episode. A four-digit year, a one- or two-digit parenthesis, any block in `clean.keep`, and punctuation that is part of the title stay. The path on disk is unchanged.
 
 `match.Run` always prepends a job for each scan parent folder (keyed by path) when children exist under that folder. A parent and its children are yielded together. Unmatched and error children fold into that parent when it is matched or manual. A folder whose cleaned name is a season, such as S01 or Season 2, folds too, even when that child matched or is manual. Files from a folded folder are numbered when they agree with one provider season, and left unnumbered otherwise. A movie or spinoff with no season token stays its own title. A season folder stays when the parent did not match. The parent job remains even when it has no files of its own.
 

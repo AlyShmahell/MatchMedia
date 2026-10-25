@@ -12,6 +12,12 @@ func TestApplyStripsTags(t *testing.T) {
 	if got != "Show S02" {
 		t.Fatalf("release name %q", got)
 	}
+	if got := Apply(cfg, "No-Rin"); got != "No-Rin" {
+		t.Fatalf("hyphen title %q", got)
+	}
+	if got := Apply(cfg, "Knight's & Magic"); got != "Knight's & Magic" {
+		t.Fatalf("title punctuation %q", got)
+	}
 }
 
 func TestApplyKeepsTitleBlocks(t *testing.T) {
@@ -39,7 +45,7 @@ func TestApplyUnclosedBlocks(t *testing.T) {
 	cases := []struct {
 		in, want string
 	}{
-		{"Show - 07 - Title (1080p x265 Dual Audio", "Show 07 Title"},
+		{"Show - 07 - Title (1080p x265 Dual Audio", "Show - 07 - Title"},
 		{"Show [1080p", "Show"},
 		{"Show (Foo (1080p) more", "Show Foo more"},
 	}
