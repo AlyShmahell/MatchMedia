@@ -2,10 +2,15 @@ package match
 
 import (
 	"path/filepath"
+	"regexp"
 	"strings"
 
+	"github.com/alyshmahell/matchmedia/src/mod/clean"
+	"github.com/alyshmahell/matchmedia/src/mod/config"
 	"github.com/alyshmahell/matchmedia/src/mod/engine/rank"
 )
+
+var folderYearRe = regexp.MustCompile(`\s*\((\d{4})\)\s*$`)
 
 func failedQuery(j Job) bool {
 	return j.Status == "unmatched" || j.Status == "error"
@@ -16,10 +21,18 @@ func isChild(j Job) bool {
 	if p == "" {
 		return false
 	}
-	if base := strings.TrimSpace(filepath.Base(j.Path)); base != "" && base != "." && base == p {
+	if base := strings.TrimSpace(filepath.Base(j.Path)); base != "" && base != "." && sameFolder(base, p) {
 		return false
 	}
 	return rank.TitleNorm(p) != rank.TitleNorm(j.Title)
+}
+
+func sameFolder(base, parent string) bool {
+	if base == parent {
+		return true
+	}
+	name := strings.TrimSpace(folderYearRe.ReplaceAllString(clean.Apply(nil, base), ""))
+	return name == parent
 }
 
 func ChildFail(j Job) bool {
@@ -107,7 +120,7 @@ func parentJobs(jobs []Job) []Job {
 	return out
 }
 
-func foldUnmatched(jobs []Job) []Job {
+func foldUnmatched(cfg *config.Config, jobs []Job) []Job {
 	children := map[string][]int{}
 	for i, j := range jobs {
 		if !isChild(j) {
@@ -123,13 +136,27 @@ func foldUnmatched(jobs []Job) []Job {
 			continue
 		}
 		idxs := children[parentGroupKey(j.Title, filepath.Clean(j.Path))]
+		var absorb []int
 		for _, ci := range idxs {
-			if !failedQuery(jobs[ci]) {
-				continue
+			if failedQuery(jobs[ci]) || seasonFolder(cfg, jobs[ci]) {
+				absorb = append(absorb, ci)
 			}
-			drop[ci] = true
-			extraFiles[i] = append(extraFiles[i], jobs[ci].Files...)
 		}
+		assigned := assignReleaseSeasons(cfg, j, jobs, absorb)
+		var spans []fileSpan
+		for _, ci := range absorb {
+			drop[ci] = true
+			files := append([]JobFile(nil), jobs[ci].Files...)
+			if num, ok := assigned[ci]; ok {
+				files = stampSeasonFiles(cfg, num, j.Catalog, files)
+			} else {
+				files = clearSE(files)
+			}
+			from := len(extraFiles[i])
+			extraFiles[i] = append(extraFiles[i], files...)
+			spans = append(spans, fileSpan{from: from, to: len(extraFiles[i])})
+		}
+		extraFiles[i] = clearDupSeasons(j.Files, extraFiles[i], spans)
 	}
 	out := make([]Job, 0, len(jobs))
 	for i, j := range jobs {
@@ -138,6 +165,7 @@ func foldUnmatched(jobs []Job) []Job {
 		}
 		if len(extraFiles[i]) > 0 {
 			j.Files = append(append([]JobFile(nil), j.Files...), extraFiles[i]...)
+			j = MapFilesOntoCatalog(j)
 		}
 		out = append(out, j)
 	}

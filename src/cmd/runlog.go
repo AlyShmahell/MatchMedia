@@ -111,6 +111,19 @@ func (l *runLog) fatal(v ...any) {
 	log.Fatal(msg)
 }
 
+func queueLines(jobs []match.Job) []string {
+	lines := make([]string, 0, len(jobs)+1)
+	lines = append(lines, itemCount(len(jobs)))
+	for _, j := range jobs {
+		title := strings.TrimSpace(strings.ReplaceAll(j.Title, "\n", " "))
+		if title == "" {
+			title = "(untitled)"
+		}
+		lines = append(lines, title+"\t"+j.Path+"\t"+j.Status)
+	}
+	return lines
+}
+
 func itemCount(n int) string {
 	if n == 1 {
 		return "1 item"

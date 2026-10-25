@@ -100,7 +100,7 @@ func TestRunFoldsGroupBeforeYield(t *testing.T) {
 	mu.Lock()
 	got := append([]string(nil), reported...)
 	mu.Unlock()
-	if len(got) < 2 || got[0] != "S01" {
+	if len(got) != 2 || got[0] != "S01" || got[1] != "Show" {
 		t.Fatalf("reports %v", got)
 	}
 }

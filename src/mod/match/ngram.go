@@ -18,8 +18,11 @@ func wordNgrams(title string) []string {
 	}
 	var out []string
 	for n := len(toks) - 1; n >= ngramMin; n-- {
-		for i := 0; i+n <= len(toks); i++ {
-			out = append(out, strings.Join(toks[i:i+n], " "))
+		head := strings.Join(toks[:n], " ")
+		tail := strings.Join(toks[len(toks)-n:], " ")
+		out = append(out, head)
+		if tail != head {
+			out = append(out, tail)
 		}
 	}
 	return out

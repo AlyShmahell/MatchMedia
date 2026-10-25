@@ -23,6 +23,14 @@ match:
   exact_lift: 0.25
   plot_stop: [a, an, the, of, to, in, on, at, is, and, or, my, i, this, that, for, with, from, as, by]
   synopsis_limit: 4000
+clean:
+  tags:
+    quality: [1080p, 720p, 480p, 2160p, 4k]
+    codec: [x264, x265, h264, h265, hevc, av1, 10bit, 10 bit, 8bit, hi10, opus, aac, aac2, 2xaac, eac3, 264]
+    source: [webrip, webdl, web-dl, web, bluray, bdrip, bd, bd1080p, bd720p, hdtv, funidub]
+    audio: [dual audio, duala, dd]
+    subs: [multi subs, multi sub, multisub, msubs, eng subs]
+  keep: ["[Rec]", "[OVA]"]
 group:
   parent_weight: 1
   distance_threshold: 0.49

@@ -33,8 +33,8 @@ func renderReport(jobs []match.Job) string {
 		statusLabel("error"), errored)
 
 	b.WriteString("## Summary\n\n")
-	b.WriteString("| Title | Year | Kind | Files | Status | Match | Score | Link |\n")
-	b.WriteString("| --- | --- | --- | --- | --- | --- | --- | --- |\n")
+	b.WriteString("| Title | Year | Kind | Files | Ngrams | Status | Match | Score | Link |\n")
+	b.WriteString("| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n")
 	for _, j := range jobs {
 		b.WriteString(summaryRow(j))
 		b.WriteByte('\n')
@@ -50,7 +50,9 @@ func summaryRow(j match.Job) string {
 	matchTitle, score, link := "", "", ""
 	if j.Match != nil {
 		matchTitle = j.Match.Title
-		score = fmt.Sprintf("%.3f", j.Match.Score)
+		if j.Ranker != "replay" && j.Ranker != "sidecar" {
+			score = fmt.Sprintf("%.3f", j.Match.Score)
+		}
 		link = j.Match.URL
 	}
 	return "| " + strings.Join([]string{
@@ -58,6 +60,7 @@ func summaryRow(j match.Job) string {
 		mdCell(j.Year),
 		mdCell(j.Kind),
 		strconv.Itoa(len(j.Files)),
+		strconv.Itoa(j.Ngrams),
 		mdCell(statusLabel(j.Status)),
 		mdCell(matchTitle),
 		score,
@@ -89,13 +92,18 @@ func jobSection(j match.Job) string {
 		if j.Match != nil && c.Provider == j.Match.Provider && c.ID == j.Match.ID {
 			chosen = "yes"
 		}
+		score := fmt.Sprintf("%.3f", c.Score)
+		jaccard := fmt.Sprintf("%.3f", c.Jaccard)
+		if j.Ranker == "sidecar" {
+			score, jaccard = "", ""
+		}
 		b.WriteString("| " + strings.Join([]string{
 			strconv.Itoa(i + 1),
 			chosen,
 			mdCell(c.Title),
 			mdCell(c.Year),
-			fmt.Sprintf("%.3f", c.Score),
-			fmt.Sprintf("%.3f", c.Jaccard),
+			score,
+			jaccard,
 			mdCell(c.Provider),
 			mdCell(c.URL),
 		}, " | ") + " |\n")

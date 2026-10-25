@@ -35,6 +35,7 @@ type Job struct {
 	Kind       string          `json:"kind,omitempty"`
 	Role       string          `json:"role,omitempty"`
 	Files      []JobFile       `json:"files,omitempty"`
+	Ngrams     int             `json:"ngrams,omitempty"`
 	Status     string          `json:"status"`
 	Ranker     string          `json:"ranker,omitempty"`
 	Match      *Candidate      `json:"match,omitempty"`

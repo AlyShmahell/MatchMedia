@@ -173,8 +173,10 @@ func main() {
 	}
 	if needMatch {
 		rl.header("match")
+		rl.lines(queueLines(match.Batch(jobs))...)
 		var mu sync.Mutex
-		var matched, manual, unmatched, errored int
+		var matched, sidecarN, replayN, manual, unmatched, errored int
+		var lastDone, lastTotal int
 		var prefetch func(context.Context, match.Job)
 		if *saveOn {
 			prefetch = func(ctx context.Context, job match.Job) {
@@ -184,12 +186,15 @@ func main() {
 		var collected []match.Job
 		for job := range match.RunProgress(context.Background(), client, jobs, func(done, total int, job match.Job) {
 			mu.Lock()
-			liveCountsFrom(job, &matched, &manual, &unmatched, &errored)
+			liveCountsFrom(job, &matched, &sidecarN, &replayN, &manual, &unmatched, &errored)
+			lastDone, lastTotal = done, total
 			s := snapshot{
 				Phase:     "match",
 				Done:      done,
 				Total:     total,
 				Matched:   matched,
+				Sidecar:   sidecarN,
+				Replay:    replayN,
 				Manual:    manual,
 				Unmatched: unmatched,
 				Error:     errored,
@@ -202,15 +207,21 @@ func main() {
 			collected = append(collected, job)
 		}
 		jobs = collected
-		matched, manual, unmatched, errored = tally(jobs)
+		folded := 0
+		if lastTotal > len(jobs) {
+			folded = lastTotal - len(jobs)
+		}
 		bar.draw(snapshot{
 			Phase:     "match",
-			Done:      len(jobs),
-			Total:     len(jobs),
+			Done:      lastDone,
+			Total:     lastTotal,
 			Matched:   matched,
+			Sidecar:   sidecarN,
+			Replay:    replayN,
 			Manual:    manual,
 			Unmatched: unmatched,
 			Error:     errored,
+			Folded:    folded,
 		})
 	}
 	if *saveOn {

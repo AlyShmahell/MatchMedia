@@ -27,12 +27,19 @@ func TestWordNgrams(t *testing.T) {
 	want := "daily grind at age 29"
 	found := false
 	for _, p := range got {
+		if p == "adventure daily grind" {
+			t.Fatalf("middle slice %q in %#v", p, got)
+		}
 		if p == want {
 			found = true
-			break
 		}
 	}
 	if !found {
 		t.Fatalf("missing %q in %#v", want, got)
+	}
+	for _, p := range hero {
+		if p == "without a class" {
+			t.Fatalf("middle slice %q in %#v", p, hero)
+		}
 	}
 }

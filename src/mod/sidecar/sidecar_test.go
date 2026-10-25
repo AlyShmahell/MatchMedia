@@ -35,8 +35,11 @@ func TestTitleNFOAndComplete(t *testing.T) {
 		t.Fatal("want complete")
 	}
 	got := FromSidecar(job)
-	if got.Status != "matched" || got.Title != "Title" || got.Year != "1999" {
+	if got.Status != "matched" || got.Ranker != "sidecar" || got.Title != "Title" || got.Year != "1999" {
 		t.Fatalf("%#v", got)
+	}
+	if got.Match == nil || got.Match.Score != 0 || got.Match.Jaccard != 0 {
+		t.Fatalf("placeholder score %#v", got.Match)
 	}
 	poster := filepath.Join(dir, "Title-poster.jpg")
 	if got.NFOPath != nfo || got.PosterPath != poster {

@@ -21,12 +21,26 @@ type Config struct {
 	DataDir     string              `yaml:"data_dir"`
 	Version     string              `yaml:"version"`
 	Match       Match               `yaml:"match"`
+	Clean       Clean               `yaml:"clean"`
 	Group       Group               `yaml:"group"`
 	Ingest      Ingest              `yaml:"ingest"`
 	Providers   map[string]Provider `yaml:"providers"`
 	ConfigPath  string              `yaml:"-"`
 	ExeDir      string              `yaml:"-"`
 	OverlayPath string              `yaml:"-"`
+}
+
+type Clean struct {
+	Tags CleanTags `yaml:"tags"`
+	Keep []string  `yaml:"keep"`
+}
+
+type CleanTags struct {
+	Quality []string `yaml:"quality"`
+	Codec   []string `yaml:"codec"`
+	Source  []string `yaml:"source"`
+	Audio   []string `yaml:"audio"`
+	Subs    []string `yaml:"subs"`
 }
 
 type Group struct {
@@ -389,6 +403,9 @@ func Validate(c Config) error {
 	if len(wordList(c.Match.PlotStop)) == 0 {
 		return fmt.Errorf("match.plot_stop is empty")
 	}
+	if len(c.Clean.phrases()) == 0 {
+		return fmt.Errorf("clean.tags is empty")
+	}
 	if c.Match.TitleLift < 0 {
 		return fmt.Errorf("match.title_lift must be >= 0")
 	}
@@ -540,6 +557,16 @@ func resolveDataDir(exeDir, p string) (string, error) {
 		return p, nil
 	}
 	return filepath.Join(exeDir, p), nil
+}
+
+func (c Clean) phrases() []string {
+	var out []string
+	out = append(out, wordList(c.Tags.Quality)...)
+	out = append(out, wordList(c.Tags.Codec)...)
+	out = append(out, wordList(c.Tags.Source)...)
+	out = append(out, wordList(c.Tags.Audio)...)
+	out = append(out, wordList(c.Tags.Subs)...)
+	return out
 }
 
 func wordList(list []string) []string {

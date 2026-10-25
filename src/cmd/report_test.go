@@ -56,23 +56,55 @@ func TestRenderReport(t *testing.T) {
 			Path:   "/media/No Hits",
 			Files:  []match.JobFile{{Path: "d.mkv"}},
 		},
+		{
+			Title:  "Dead Mount Death Play",
+			Year:   "2023",
+			Kind:   "show",
+			Status: "matched",
+			Ranker: "replay",
+			Path:   "/media/Dead Mount Death Play",
+			Files:  []match.JobFile{{Path: "a.mkv"}},
+			Match:  &match.Candidate{Title: "Dead Mount Death Play", Score: 0},
+		},
+		{
+			Title:  "Violet Evergarden",
+			Year:   "2018",
+			Kind:   "show",
+			Status: "matched",
+			Ranker: "sidecar",
+			Path:   "/media/Violet Evergarden",
+			Files:  []match.JobFile{{Path: "a.mkv"}},
+			Match:  &match.Candidate{Provider: "tvmaze", ID: "1", Title: "Violet Evergarden"},
+			Candidates: []match.Candidate{{
+				Provider: "tvmaze", ID: "1", Title: "Violet Evergarden", Year: "2018",
+			}},
+		},
 	}
 
 	got := renderReport(jobs)
-	if !strings.Contains(got, "jobs: 3 · ✅ matched: 1 · ✋ manual: 1 · ❌ unmatched: 1 · 💥 error: 0") {
+	if !strings.Contains(got, "jobs: 5 · ✅ matched: 3 · ✋ manual: 1 · ❌ unmatched: 1 · 💥 error: 0") {
 		t.Fatalf("counts:\n%s", got)
 	}
-	if !strings.Contains(got, "| Title | Year | Kind | Files | Status | Match | Score | Link |") {
+	if !strings.Contains(got, "| Title | Year | Kind | Files | Ngrams | Status | Match | Score | Link |") {
 		t.Fatal("summary header")
 	}
-	if !strings.Contains(got, "| Cowboy Bebop | 1998 | show | 2 | ✅ matched | Cowboy Bebop | 0.988 | https://example.test/13 |") {
+	if !strings.Contains(got, "| Cowboy Bebop | 1998 | show | 2 | 0 | ✅ matched | Cowboy Bebop | 0.988 | https://example.test/13 |") {
 		t.Fatalf("matched summary row:\n%s", got)
 	}
-	if !strings.Contains(got, "| Manual \\`Pick\\` | 2001 | movie | 1 | ✋ manual |  |  |  |") {
+	if !strings.Contains(got, "| Manual \\`Pick\\` | 2001 | movie | 1 | 0 | ✋ manual |  |  |  |") {
 		t.Fatalf("manual summary row:\n%s", got)
 	}
-	if !strings.Contains(got, "| No Hits |  | movie | 1 | ❌ unmatched |  |  |  |") {
+	if !strings.Contains(got, "| No Hits |  | movie | 1 | 0 | ❌ unmatched |  |  |  |") {
 		t.Fatalf("unmatched summary row:\n%s", got)
+	}
+	if !strings.Contains(got, "| Dead Mount Death Play | 2023 | show | 1 | 0 | ✅ matched | Dead Mount Death Play |  |  |") {
+		t.Fatalf("replay summary row:\n%s", got)
+	}
+	if !strings.Contains(got, "| Violet Evergarden | 2018 | show | 1 | 0 | ✅ matched | Violet Evergarden |  |  |") {
+		t.Fatalf("sidecar summary row:\n%s", got)
+	}
+	if !strings.Contains(got, "| 1 | yes | Violet Evergarden | 2018 |  |  | tvmaze |  |") {
+		t.Fatalf("sidecar candidate row:\n%s", got)
 	}
 	if !strings.Contains(got, "status: ✅ matched") {
 		t.Fatalf("matched status line:\n%s", got)

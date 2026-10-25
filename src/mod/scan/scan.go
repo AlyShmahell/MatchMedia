@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/alyshmahell/matchmedia/src/mod/clean"
 	"github.com/alyshmahell/matchmedia/src/mod/config"
 	"github.com/alyshmahell/matchmedia/src/mod/engine/group"
 	"github.com/alyshmahell/matchmedia/src/mod/match"
@@ -71,7 +72,7 @@ func RunProgress(cfg *config.Config, path, mode string, report func(done, total 
 			}
 			jobs = append(jobs, jobsFromTitles(cfg, child, titles)...)
 		} else if _, ok := cfg.GroupVideoExt()[strings.ToLower(filepath.Ext(e.Name()))]; ok {
-			jobs = append(jobs, fileJob(path, e.Name()))
+			jobs = append(jobs, fileJob(cfg, path, e.Name()))
 		}
 		if report != nil {
 			report(i+1, total, e.Name())
@@ -81,11 +82,11 @@ func RunProgress(cfg *config.Config, path, mode string, report func(done, total 
 }
 
 func jobsFromTitles(cfg *config.Config, child string, titles []group.Title) []match.Job {
-	parent, parentYear := splitTitleYear(filepath.Base(child))
+	parent, parentYear := splitTitleYear(clean.Apply(cfg, filepath.Base(child)))
 	out := make([]match.Job, 0, len(titles))
 	season := cfg.Season()
 	for _, t := range titles {
-		title, year := splitTitleYear(t.Name)
+		title, year := splitTitleYear(clean.Apply(cfg, t.Name))
 		if year == "" {
 			year = parentYear
 		}
@@ -110,9 +111,9 @@ func jobsFromTitles(cfg *config.Config, child string, titles []group.Title) []ma
 	return out
 }
 
-func fileJob(root, name string) match.Job {
+func fileJob(cfg *config.Config, root, name string) match.Job {
 	abs := filepath.Join(root, name)
-	title, year := splitTitleYear(strings.TrimSuffix(name, filepath.Ext(name)))
+	title, year := splitTitleYear(clean.Apply(cfg, strings.TrimSuffix(name, filepath.Ext(name))))
 	se, ep := inferSE(name)
 	kind := "movie"
 	if se != "" {
@@ -122,7 +123,7 @@ func fileJob(root, name string) match.Job {
 		Source: "scan",
 		Title:  title,
 		Year:   year,
-		Parent: filepath.Base(root),
+		Parent: clean.Apply(cfg, filepath.Base(root)),
 		Path:   abs,
 		Kind:   kind,
 		Role:   "title",

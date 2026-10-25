@@ -51,13 +51,17 @@ func RunProgress(ctx context.Context, client *fetch.Client, jobs []Job, report f
 	}
 }
 
+func Batch(jobs []Job) []Job {
+	return append(append([]Job(nil), parentJobs(jobs)...), jobs...)
+}
+
 func runProgress(ctx context.Context, client *fetch.Client, jobs []Job, report func(done, total int, job Job), prefetch func(context.Context, Job), emit chan<- Job) {
 	cfg := client.Config()
 	n := 1
 	if cfg != nil && cfg.Match.Workers > 0 {
 		n = cfg.Match.Workers
 	}
-	batch := append(append([]Job(nil), parentJobs(jobs)...), jobs...)
+	batch := Batch(jobs)
 	keys := make([]string, len(batch))
 	childKeys := map[string]struct{}{}
 	for _, j := range batch {
@@ -100,7 +104,7 @@ func runProgress(ctx context.Context, client *fetch.Client, jobs []Job, report f
 			}
 		}
 		mu.Unlock()
-		for _, folded := range foldUnmatched(members) {
+		for _, folded := range foldUnmatched(cfg, members) {
 			if prefetch != nil {
 				prefetch(ctx, folded)
 			}
@@ -173,6 +177,7 @@ func runOne(ctx context.Context, cfg *config.Config, client *fetch.Client, job J
 	cands, errs, ok := search(ctx, client, q, job.Type == "")
 	if len(cands) == 0 && ok > 0 {
 		for _, phrase := range wordNgrams(q.Title) {
+			job.Ngrams++
 			nq := q
 			nq.Title = phrase
 			nc, _, _ := search(ctx, client, nq, job.Type == "")

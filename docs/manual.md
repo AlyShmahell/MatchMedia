@@ -16,6 +16,7 @@
 7. `fetch` — Call metadata APIs from YAML.
 8. `match` — Search, rank, and set job status.
 9. `sidecar` — Read and write sidecar NFO next to the media.
+10. `clean` — Strip comparison tags from folder and file names.
 
 `cmd` is `package main`. It is not a library package.
 
@@ -41,7 +42,7 @@ providers:
 `scan.Run` groups each immediate child of the scan path the same way as `experiments/`. Call `group.New(cfg).Group(dir)` for one folder.
 
 1. A directory name that matches `group.season_pattern` is a season folder. All videos under season folders form one show. The show name is the child folder name.
-2. Any other directory is a title folder. The engine clusters videos with character n-gram TF-IDF and average-linkage cosine distance. Constants are `group.parent_weight` and `group.distance_threshold`.
+2. Any other directory is a title folder. The engine clusters videos with character n-gram TF-IDF and average-linkage cosine distance, using the cleaned folder and file names. Constants are `group.parent_weight` and `group.distance_threshold`.
 3. Loose video files beside seasons join the show unless their cluster is farthest from the season centroid. Farthest clusters become movie titles.
 4. With no season folders, each loose file is one title.
 
@@ -103,7 +104,9 @@ for job := range match.Run(ctx, client, jobs) {
 
 Rank uses Jaccard of title tokens plus a synopsis lift. Auto-match uses `match.min_score` and `match.min_margin`. Trailing `(YYYY)` is stripped from the search title; identical searches share one provider request. An empty full-title search retries word n-grams (n≥3) and ranks those hits against the original title.
 
-`match.Run` always prepends a job for each scan parent folder (keyed by path) when children exist under that folder. A parent and its children are yielded together, after unmatched and error children fold into that parent when it is matched or manual (their files are unioned onto the parent). Matched and manual children stay. The parent job remains even if every child already matched.
+Comparison names drop the configured `clean.tags`, one-word brackets, parentheses whose words are all tags, a trailing hyphen token, and 8-digit checksums before match and before the fold reads a season or episode. A four-digit year, a one- or two-digit parenthesis, and any block in `clean.keep` stay. The path on disk is unchanged.
+
+`match.Run` always prepends a job for each scan parent folder (keyed by path) when children exist under that folder. A parent and its children are yielded together. Unmatched and error children fold into that parent when it is matched or manual. A folder whose cleaned name is a season, such as S01 or Season 2, folds too, even when that child matched or is manual. Files from a folded folder are numbered when they agree with one provider season, and left unnumbered otherwise. A movie or spinoff with no season token stays its own title. A season folder stays when the parent did not match. The parent job remains even when it has no files of its own.
 
 Ingest a list instead of a scan:
 
@@ -174,9 +177,9 @@ Flags:
 | `-save` | Write NFO and posters next to the media. Default is off. |
 | `-help` | Print the MatchMedia title, logo (TTY), usage, Support MatchMedia (Ko-fi link then QR), license, and attribution, then exit. |
 
-After match (and save when `-save` is set), the CLI writes the report and prints `wrote <path>` on stdout. It does not print one line per job. On a TTY it prints the logo, then one progress line per phase on stderr (scan, match, save, report); finished lines stay. The save line shows nfo, episode, and poster counts. Pipes and `NO_COLOR` hide color; a non-TTY hides the logo and the bar. It does not listen on a port.
+After match (and save when `-save` is set), the CLI writes the report and prints `wrote <path>` on stdout. It does not print one line per job. On a TTY it prints the logo, then one progress line per phase on stderr (scan, match, save, report); finished lines stay. The match line keeps the queue total, and shows sidecar, replay, and folded. Before requests start, the run log lists every job in that queue. The save line shows nfo, episode, and poster counts. Pipes and `NO_COLOR` hide color; a non-TTY hides the logo and the bar. It does not listen on a port.
 
-The report starts with counts (jobs, matched, manual, unmatched, error), then a summary table (Title, Year, Kind, Files, Status, Match, Score, Link). Status is prefixed with an emoji: ✅ matched, ✋ manual, ❌ unmatched, 💥 error. Each job has a ranked candidate table (#, Chosen, Title, Year, Score, Jaccard, Provider, Link). An empty candidate list is `no candidates`.
+The report starts with counts (jobs, matched, manual, unmatched, error), then a summary table (Title, Year, Kind, Files, Ngrams, Status, Match, Score, Link). Ngrams is how many fallback phrase searches that title ran after the full title returned nothing. Each phrase is a head or a tail of the title. A replay or a sidecar match leaves Score empty, and a sidecar candidate row leaves Score and Jaccard empty. Status is prefixed with an emoji: ✅ matched, ✋ manual, ❌ unmatched, 💥 error. Each job has a ranked candidate table (#, Chosen, Title, Year, Score, Jaccard, Provider, Link). An empty candidate list is `no candidates`.
 
 ## Tests
 

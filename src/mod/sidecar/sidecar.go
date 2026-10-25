@@ -96,13 +96,11 @@ func FromSidecar(job match.Job) match.Job {
 		ID:       meta.id,
 		Title:    title,
 		Year:     year,
-		Score:    1,
-		Jaccard:  1,
 		Synopsis: meta.plot,
 		Attrs:    meta.attrs(),
 	}
 	job.Status = "matched"
-	job.Ranker = "set"
+	job.Ranker = "sidecar"
 	job.Match = &c
 	job.Candidates = []rank.Hit{c}
 	job.Catalog = []match.CatalogSeason{}

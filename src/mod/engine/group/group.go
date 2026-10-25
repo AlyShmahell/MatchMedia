@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/alyshmahell/matchmedia/src/mod/clean"
 	"github.com/alyshmahell/matchmedia/src/mod/config"
 )
 
@@ -21,6 +22,7 @@ type Library struct {
 	Extensions   map[string]struct{}
 	Season       *regexp.Regexp
 	Clusterer    Clusterer
+	clean        func(string) string
 }
 
 func New(cfg *config.Config) Library {
@@ -32,7 +34,18 @@ func New(cfg *config.Config) Library {
 		Extensions:   cfg.GroupVideoExt(),
 		Season:       cfg.Season(),
 		Clusterer:    Clusterer{Threshold: cfg.Group.DistanceThreshold},
+		clean:        func(s string) string { return clean.Apply(cfg, s) },
 	}
+}
+
+func (l Library) cmp(s string) string {
+	if l.clean == nil {
+		return s
+	}
+	if c := strings.TrimSpace(l.clean(s)); c != "" {
+		return c
+	}
+	return s
 }
 
 type looseGroup struct {
@@ -126,11 +139,15 @@ func (l Library) Group(dir string) ([]Title, error) {
 func (l Library) clusterPaths(paths, parents []string) []int {
 	names := make([]string, len(paths))
 	for i, path := range paths {
-		names[i] = filepath.Base(path)
+		names[i] = l.cmp(filepath.Base(path))
+	}
+	cleanedParents := make([]string, len(parents))
+	for i, name := range parents {
+		cleanedParents[i] = l.cmp(name)
 	}
 	halves := parallelMap(2, func(i int) [][]float64 {
 		if i == 0 {
-			return NewVectorizer().FitTransform(parents)
+			return NewVectorizer().FitTransform(cleanedParents)
 		}
 		return NewVectorizer().FitTransform(names)
 	})
@@ -141,7 +158,7 @@ func (l Library) clusterPaths(paths, parents []string) []int {
 func (l Library) clusterFilenames(paths []string) []int {
 	stems := make([]string, len(paths))
 	for i, path := range paths {
-		stems[i] = stem(path)
+		stems[i] = l.cmp(stem(path))
 	}
 	return l.Clusterer.Label(NewVectorizer().FitTransform(stems))
 }
@@ -149,11 +166,11 @@ func (l Library) clusterFilenames(paths []string) []int {
 func (l Library) looseAgainstSeasons(loose, seasonPaths []string) ([]string, [][]string) {
 	seasonStems := make([]string, len(seasonPaths))
 	for i, path := range seasonPaths {
-		seasonStems[i] = stem(path)
+		seasonStems[i] = l.cmp(stem(path))
 	}
 	looseStems := make([]string, len(loose))
 	for i, path := range loose {
-		looseStems[i] = stem(path)
+		looseStems[i] = l.cmp(stem(path))
 	}
 	fitted := NewVectorizer()
 	seasonVecs := fitted.FitTransform(seasonStems)

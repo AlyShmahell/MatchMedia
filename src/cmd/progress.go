@@ -31,9 +31,12 @@ type snapshot struct {
 	Done       int
 	Total      int
 	Matched    int
+	Sidecar    int
+	Replay     int
 	Manual     int
 	Unmatched  int
 	Error      int
+	Folded     int
 	NFO        int
 	EpisodeNFO int
 	Posters    int
@@ -141,7 +144,7 @@ func render(s snapshot, color bool, width int) string {
 	extra := ""
 	switch s.Phase {
 	case "match":
-		extra = fmt.Sprintf("  matched:%d  manual:%d  unmatched:%d  error:%d", s.Matched, s.Manual, s.Unmatched, s.Error)
+		extra = fmt.Sprintf("  matched:%d  manual:%d  unmatched:%d  error:%d  sidecar:%d  replay:%d  folded:%d", s.Matched, s.Manual, s.Unmatched, s.Error, s.Sidecar, s.Replay, s.Folded)
 	case "save":
 		extra = fmt.Sprintf("  nfo:%d  episode:%d  poster:%d", s.NFO, s.EpisodeNFO, s.Posters)
 	}
@@ -164,11 +167,13 @@ func render(s snapshot, color bool, width int) string {
 	phase := ansiCyan + fmt.Sprintf("%-6s", s.Phase) + ansiReset
 	switch s.Phase {
 	case "match":
-		extra = fmt.Sprintf("  %smatched:%d%s  %smanual:%d%s  unmatched:%d  %serror:%d%s",
+		extra = fmt.Sprintf("  %smatched:%d%s  %smanual:%d%s  unmatched:%d  %serror:%d%s  sidecar:%d  replay:%d  %sfolded:%d%s",
 			ansiGreen, s.Matched, ansiReset,
 			ansiYellow, s.Manual, ansiReset,
 			s.Unmatched,
-			ansiRed, s.Error, ansiReset)
+			ansiRed, s.Error, ansiReset,
+			s.Sidecar, s.Replay,
+			ansiDim, s.Folded, ansiReset)
 	case "save":
 		extra = fmt.Sprintf("  %snfo:%d%s  %sepisode:%d%s  %sposter:%d%s",
 			ansiGreen, s.NFO, ansiReset,
@@ -236,9 +241,19 @@ func tally(jobs []match.Job) (matched, manual, unmatched, errored int) {
 	return
 }
 
-func liveCountsFrom(job match.Job, matched, manual, unmatched, errored *int) {
+func liveCountsFrom(job match.Job, matched, sidecar, replay, manual, unmatched, errored *int) {
 	if match.ChildFail(job) {
 		return
+	}
+	if job.Status == "matched" {
+		switch job.Ranker {
+		case "sidecar":
+			*sidecar++
+			return
+		case "replay":
+			*replay++
+			return
+		}
 	}
 	countsFrom(job, matched, manual, unmatched, errored)
 }

@@ -20,6 +20,10 @@ func TestRunLogFormat(t *testing.T) {
 	rl.header("scan")
 	rl.lines(itemCount(2))
 	rl.header("match")
+	rl.lines(queueLines([]match.Job{
+		{Title: "Show", Path: "/lib/Show", Status: "pending"},
+		{Title: "S01", Path: "/lib/Show/S01", Status: "matched"},
+	})...)
 	rl.errorJob(match.Job{Title: "Skip", Status: "matched"})
 	rl.errorJob(match.Job{Title: "Tokyo Ghoul", Path: "/lib/Tokyo Ghoul", Status: "error", Error: "tvmaze: status 429"})
 	rl.errorJob(match.Job{Title: "A Journey", Path: "/lib/A Journey", Status: "error", Error: "tvmaze: status 429"})
@@ -44,6 +48,10 @@ func TestRunLogFormat(t *testing.T) {
 		"",
 		"match",
 		helpSep,
+		"2 items",
+		"Show\t/lib/Show\tpending",
+		"S01\t/lib/Show/S01\tmatched",
+		"",
 		"Tokyo Ghoul",
 		"path: /lib/Tokyo Ghoul",
 		"error: tvmaze: status 429",

@@ -44,17 +44,22 @@ func TestTallyFoldedJobs(t *testing.T) {
 }
 
 func TestLiveCountsFrom(t *testing.T) {
-	var matched, manual, unmatched, errored int
-	liveCountsFrom(match.Job{Title: "S01", Parent: "Show", Status: "unmatched"}, &matched, &manual, &unmatched, &errored)
-	liveCountsFrom(match.Job{Title: "S02", Parent: "Show", Status: "error"}, &matched, &manual, &unmatched, &errored)
+	var matched, sidecar, replay, manual, unmatched, errored int
+	liveCountsFrom(match.Job{Title: "S01", Parent: "Show", Status: "unmatched"}, &matched, &sidecar, &replay, &manual, &unmatched, &errored)
+	liveCountsFrom(match.Job{Title: "S02", Parent: "Show", Status: "error"}, &matched, &sidecar, &replay, &manual, &unmatched, &errored)
 	if unmatched != 0 || errored != 0 {
 		t.Fatalf("child fail counted unmatched=%d error=%d", unmatched, errored)
 	}
-	liveCountsFrom(match.Job{Title: "S01", Parent: "Show", Status: "matched"}, &matched, &manual, &unmatched, &errored)
+	liveCountsFrom(match.Job{Title: "S01", Parent: "Show", Status: "matched"}, &matched, &sidecar, &replay, &manual, &unmatched, &errored)
 	if matched != 1 {
 		t.Fatalf("matched child %d", matched)
 	}
-	liveCountsFrom(match.Job{Title: "Leftover", Status: "unmatched"}, &matched, &manual, &unmatched, &errored)
+	liveCountsFrom(match.Job{Title: "Saved", Status: "matched", Ranker: "sidecar"}, &matched, &sidecar, &replay, &manual, &unmatched, &errored)
+	liveCountsFrom(match.Job{Title: "Again", Status: "matched", Ranker: "replay"}, &matched, &sidecar, &replay, &manual, &unmatched, &errored)
+	if matched != 1 || sidecar != 1 || replay != 1 {
+		t.Fatalf("matched=%d sidecar=%d replay=%d", matched, sidecar, replay)
+	}
+	liveCountsFrom(match.Job{Title: "Leftover", Status: "unmatched"}, &matched, &sidecar, &replay, &manual, &unmatched, &errored)
 	if unmatched != 1 {
 		t.Fatalf("title unmatched %d", unmatched)
 	}
@@ -66,15 +71,18 @@ func TestRenderProgressPlain(t *testing.T) {
 		Done:      12,
 		Total:     40,
 		Matched:   9,
+		Sidecar:   4,
+		Replay:    3,
 		Manual:    2,
 		Unmatched: 1,
 		Error:     0,
+		Folded:    6,
 		Title:     "Cowboy Bebop",
-	}, false, 120)
+	}, false, 160)
 	if strings.Contains(got, "\x1b") {
 		t.Fatalf("ansi in plain: %q", got)
 	}
-	for _, want := range []string{"match", "12/40", "matched:9", "manual:2", "unmatched:1", "error:0", "Cowboy Bebop"} {
+	for _, want := range []string{"match", "12/40", "matched:9", "manual:2", "unmatched:1", "error:0", "sidecar:4", "replay:3", "folded:6", "Cowboy Bebop"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %q in %q", want, got)
 		}
