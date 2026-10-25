@@ -58,6 +58,23 @@ Pass the mode to `scan.Run`.
 
 A complete sidecar is a title NFO plus a poster. For `changes`, saved `<urls>` are the provider requests to replay. A show writes only episode NFOs and stills that are not already beside the video.
 
+```mermaid
+flowchart TD
+  changes[Changes job]
+  changes --> title{"title NFO and poster"}
+  title -->|no| full["pending search and full write"]
+  title -->|yes| episodes{"every episode NFO present"}
+  episodes -->|yes| done["matched, no fetch and no write"]
+  episodes -->|no| saved{"saved urls"}
+  saved -->|yes| replay[replay those requests]
+  replay -->|"all succeed"| gaps["write missing episode NFOs and stills"]
+  replay -->|"any request fails"| search[one search]
+  saved -->|no| search
+  search --> rewrite["replace urls and write missing episode sidecars"]
+```
+
+After that search, the existing `<urls>` block is replaced and only missing episode sidecars are written, while the title, plot, and poster stay.
+
 ## Match
 
 ```go
