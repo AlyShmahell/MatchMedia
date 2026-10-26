@@ -19,29 +19,29 @@ type Query struct {
 // Request is a provider call the pipeline already made.
 // Query is the request query with the API key removed.
 type Request struct {
-	Section  string
-	Provider string
-	NFO      string
-	URL      string
-	Query    string
-	Season   string
+	Section  string `json:"section,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	NFO      string `json:"nfo,omitempty"`
+	URL      string `json:"url,omitempty"`
+	Query    string `json:"query,omitempty"`
+	Season   string `json:"season,omitempty"`
 }
 
 type Hit struct {
-	Provider string
-	ID       string
-	Title    string
-	Year     string
-	URL      string
-	Synopsis string
-	Poster   string
-	Attrs    map[string]string
-	NFO      string
-	UniqueID string
-	QueryCov float64
-	Jaccard  float64
-	Score    float64
-	Requests []Request
+	Provider string            `json:"provider"`
+	ID       string            `json:"id"`
+	Title    string            `json:"title"`
+	Year     string            `json:"year,omitempty"`
+	URL      string            `json:"url,omitempty"`
+	Synopsis string            `json:"synopsis,omitempty"`
+	Poster   string            `json:"poster,omitempty"`
+	Attrs    map[string]string `json:"attrs,omitempty"`
+	NFO      string            `json:"nfo,omitempty"`
+	UniqueID string            `json:"unique_id,omitempty"`
+	QueryCov float64           `json:"query_cov,omitempty"`
+	Jaccard  float64           `json:"jaccard,omitempty"`
+	Score    float64           `json:"score,omitempty"`
+	Requests []Request         `json:"requests,omitempty"`
 }
 
 func (h Hit) Key() string {
