@@ -1,15 +1,6 @@
 services:
-  dist:
-    build:
-      context: ../src
-      dockerfile: ../build/Containerfile
-    volumes:
-      - ./dist:/out:z
-
   app:
-    build:
-      context: .
-      dockerfile: Runtime.Containerfile
+    image: localhost/matchmedia:dev
     security_opt:
       - label=disable
     volumes:
@@ -20,4 +11,3 @@ services:
     environment:
       HOME: /home/matchmedia
     working_dir: /home/matchmedia
-    entrypoint: ["/home/matchmedia/.local/bin/matchmedia"]

@@ -1,0 +1,171 @@
+http:
+  deadline_ms: 60000
+  retries: 5
+  backoff:
+    min_ms: 1024
+    max_ms: 8192
+  attempt_ms: 10000
+  cooldown:
+    fails: 5
+    min_ms: 32768
+    max_ms: 524288
+version: "0.2.0"
+match:
+  min_score: 0.72
+  min_margin: 0.04
+  min_hits: 1
+  workers: 8
+  prefer:
+    anime:
+      language: Japanese
+      kind: Animation
+  title_lift: 0.15
+  exact_lift: 0.25
+  plot_stop: [a, an, the, of, to, in, on, at, is, and, or, my, i, this, that, for, with, from, as, by]
+  synopsis_limit: 4000
+clean:
+  tags:
+    quality: [1080p, 720p, 480p, 2160p, 4k]
+    codec: [x264, x265, h264, h265, hevc, av1, 10bit, 10 bit, 8bit, hi10, opus, aac, aac2, 2xaac, eac3, 264]
+    source: [webrip, webdl, web-dl, web, bluray, bdrip, bd, bd1080p, bd720p, hdtv, funidub]
+    audio: [dual audio, duala, dd]
+    subs: [multi subs, multi sub, multisub, msubs, eng subs]
+  keep: ["[Rec]", "[OVA]"]
+group:
+  parent_weight: 1
+  distance_threshold: 0.49
+  video_ext: [mkv, mp4, avi, m4v, ts, m2ts]
+  season_pattern: '(?i)^(season\s*\d+|ovas?|specials?|movies?|others?|extras?|s\d{1,2})$'
+ingest:
+  seq_threshold: 0.72
+  sample_rows: 3
+  aliases:
+    mediatype: type
+    seasonnumber: season
+    episodenumber: episode
+    imdbid: imdb
+  types:
+    tv: tv
+    anime: anime
+    movie: movie
+    series: tv
+    episode: tv
+    season: tv
+    film: movie
+providers:
+  tmdb:
+    use: primary
+    require: api_key
+    api_key: ""
+    base: "https://api.themoviedb.org/3"
+    year: prefix4
+    poster_prefix: "https://image.tmdb.org/t/p/w185"
+    movie:
+      types: [movie, anime]
+      search:
+        url: "{base}/search/movie"
+        query: { api_key: "{api_key}", query: "{title}", include_adult: "false" }
+        items: results
+        fields: { id: id, title: title, year: release_date, url: id, synopsis: overview, poster: poster_path, rating: vote_average, language: original_language, premiered: release_date }
+      url_prefix: "https://www.themoviedb.org/movie/"
+      nfo: movie
+      uniqueid: tmdb-movie
+      detail:
+        url: "{base}/movie/{id}"
+        query: { api_key: "{api_key}" }
+        fields:
+          synopsis: overview
+          rating: vote_average
+          runtime: runtime
+          language: original_language
+          premiered: release_date
+          genres: genres
+          country: production_countries
+    tv:
+      types: [tv, anime]
+      search:
+        url: "{base}/search/tv"
+        query: { api_key: "{api_key}", query: "{title}", include_adult: "false" }
+        items: results
+        fields: { id: id, title: name, year: first_air_date, url: id, synopsis: overview, poster: poster_path, rating: vote_average, language: original_language, premiered: first_air_date }
+      url_prefix: "https://www.themoviedb.org/tv/"
+      nfo: tvshow
+      uniqueid: tmdb-tv
+      detail:
+        url: "{base}/tv/{id}"
+        query: { api_key: "{api_key}" }
+        fields:
+          synopsis: overview
+          rating: vote_average
+          runtime: last_episode_to_air.runtime
+          language: original_language
+          premiered: first_air_date
+          ended: last_air_date
+          genres: genres
+          country: origin_country
+          network: networks
+      catalog:
+        seasons:
+          url: "{base}/tv/{id}"
+          query: { api_key: "{api_key}" }
+          items: seasons
+          fields: { id: id, number: season_number, title: name, synopsis: overview, poster: poster_path }
+          poster_prefix: "https://image.tmdb.org/t/p/w185"
+        episodes:
+          url: "{base}/tv/{id}/season/{season}"
+          query: { api_key: "{api_key}" }
+          items: episodes
+          fields: { id: id, number: episode_number, title: name, synopsis: overview, poster: still_path, runtime: runtime, airdate: air_date }
+          poster_prefix: "https://image.tmdb.org/t/p/w185"
+  omdb:
+    use: defer
+    types: [movie]
+    require: api_key
+    api_key: ""
+    base: "https://www.omdbapi.com"
+    search:
+      url: "{base}"
+      query: { apikey: "{api_key}", s: "{title}", type: "movie" }
+      items: Search
+      fields: { id: imdbID, title: Title, year: Year, url: imdbID, poster: Poster }
+    url_prefix: "https://www.imdb.com/title/"
+    nfo: movie
+    uniqueid: imdb
+    detail:
+      url: "{base}"
+      query: { apikey: "{api_key}", i: "{id}", plot: "short" }
+      fields: { synopsis: Plot, genres: Genre, rating: imdbRating, runtime: Runtime, language: Language, premiered: Released, country: Country }
+  tvmaze:
+    use: fallback
+    types: [tv, anime, ""]
+    retries: 2
+    base: "https://api.tvmaze.com"
+    search:
+      min_interval_ms: 501
+      url: "{base}/search/shows"
+      query: { q: "{title}" }
+      items: "$"
+      fields: { id: show.id, title: show.name, year: show.premiered, url: show.url, synopsis: show.summary, poster: show.image.medium, kind: show.type, language: show.language, rating: show.rating.average, runtime: show.runtime, premiered: show.premiered, ended: show.ended, genres: show.genres, country: show.network.country.name, network: show.network.name }
+    year: prefix4
+    titles:
+      url: "{base}/shows/{id}/akas"
+      items: "$"
+      fields: { title: name }
+      max: 3
+    episode:
+      url: "{base}/shows/{id}/episodebynumber"
+      query: { season: "{season}", number: "{episode}" }
+      fields: { id: id, title: name, year: airdate, url: url, runtime: runtime, airdate: airdate }
+      year: prefix4
+    catalog:
+      seasons:
+        url: "{base}/shows/{id}/seasons"
+        items: "$"
+        fields: { id: id, number: number, title: name, synopsis: summary, poster: image.medium, year: premiereDate }
+        year: prefix4
+      episodes:
+        url: "{base}/shows/{id}/episodes"
+        items: "$"
+        fields: { id: id, number: number, title: name, synopsis: summary, poster: image.medium, season: season, year: airdate, runtime: runtime, airdate: airdate }
+        year: prefix4
+    nfo: tvshow

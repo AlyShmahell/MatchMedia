@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Build a host dist, then run it or pack it.
+# Build the image, run it, or pack the binary.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DIR"
+IMAGE=localhost/matchmedia:dev
 
 compose() {
   if command -v podman-compose >/dev/null 2>&1; then
@@ -17,11 +18,53 @@ compose() {
   fi
 }
 
+engine() {
+  if command -v podman >/dev/null 2>&1; then
+    echo podman
+  elif command -v docker >/dev/null 2>&1; then
+    echo docker
+  else
+    echo "error: need podman or docker" >&2
+    exit 1
+  fi
+}
+
 rebuild() {
-  rm -rf "$DIR/dist"
-  mkdir -p "$DIR/dist"
+  # Buildah globs '*' in the host path (*Media). Feed a tar from /tmp instead.
+  local src cf
+  src="$(mktemp -d)"
+  cf="$(mktemp)"
+  cp -a "$DIR/../src/." "$src/"
+  cp "$DIR/../LICENSE" "$src/cmd/LICENSE"
+  cp "$DIR/../docs/logo.png" "$src/cmd/logo.png"
+  cp "$DIR/../docs/kofi.png" "$src/cmd/kofi.png"
+  cp "$DIR/../docs/attribution.md" "$src/cmd/attribution.md"
+  cp "$DIR/Containerfile" "$cf"
+  tar -C "$src" -cf - . | "$(engine)" build --pull=always -f "$cf" -t "$IMAGE" -
+  rm -rf "$src" "$cf"
+}
+
+start() {
+  local xdg="$DIR/cache/xdg"
+  mkdir -p "$xdg/.local/share/matchmedia/config" \
+    "$xdg/.local/share/matchmedia/catalog" \
+    "$xdg/.local/state/matchmedia" \
+    "$xdg/.cache" \
+    "$xdg/Videos"
+  if ! "$(engine)" image inspect "$IMAGE" >/dev/null 2>&1; then
+    rebuild
+  fi
+  compose up --force-recreate --abort-on-container-exit app
+}
+
+extract_dist() {
+  local ctr
+  ctr="$("$(engine)" create "$IMAGE")"
+  mkdir -p "$DIR/dist/.local/bin"
   : >"$DIR/dist/.gitkeep"
-  compose up --build --force-recreate --abort-on-container-exit dist
+  "$(engine)" cp "$ctr:/usr/local/bin/matchmedia" "$DIR/dist/.local/bin/matchmedia"
+  "$(engine)" rm "$ctr"
+  chmod a+x "$DIR/dist/.local/bin/matchmedia"
 }
 
 stage_package() {
@@ -29,59 +72,34 @@ stage_package() {
   mkdir -p "$staging/matchmedia"
   cp -a "$DIR/dist"/. "$staging/matchmedia/"
   rm -f "$staging/matchmedia/.gitkeep"
-  if [[ ! -f "$DIR/../LICENSE" ]]; then
-    echo "error: $DIR/../LICENSE not found" >&2
-    exit 1
-  fi
-  cp "$DIR/../LICENSE" "$staging/matchmedia/LICENSE"
 }
 
 write_tar() {
-  local staging="$1" name="$2"
-  tar -C "$staging" -czf "$DIR/package/$name" matchmedia
-  echo "wrote $DIR/package/$name"
+  local staging="$1" out="$2"
+  mkdir -p "$(dirname "$out")"
+  tar -C "$staging" -czf "$out" matchmedia
+  echo "wrote $out"
 }
 
 package() {
-  if [[ ! -x "$DIR/dist/.local/bin/matchmedia" ]]; then
-    echo "error: build/dist/.local/bin/matchmedia not found; rebuild first" >&2
-    exit 1
-  fi
-  mkdir -p "$DIR/package"
+  rm -rf "$DIR/dist"
+  mkdir -p "$DIR/dist" "$DIR/package"
+  : >"$DIR/dist/.gitkeep"
   : >"$DIR/package/.gitkeep"
-  local version staging
-  version="$(awk -F'"' '/^version:/{print $2; exit}' "$DIR/dist/.local/share/matchmedia/config/default.yaml")"
+  extract_dist
+  local version staging os arch outdir
+  os=linux
+  arch=amd64
+  version="$(awk -F'"' '/^version:/{print $2; exit}' "$DIR/../src/mod/config/default.yaml")"
   if [[ -z "$version" ]]; then
-    echo "error: version missing from build/dist/.local/share/matchmedia/config/default.yaml" >&2
+    echo "error: version missing from src/mod/config/default.yaml" >&2
     exit 1
   fi
-
   staging="$(mktemp -d)"
   stage_package "$staging"
-  write_tar "$staging" "matchmedia-${version}-linux-amd64.tar.gz"
+  outdir="$DIR/package/matchmedia-${version}-${os}-${arch}"
+  write_tar "$staging" "$outdir/matchmedia-${os}-${arch}.tar.gz"
   rm -rf "$staging"
-}
-
-start() {
-  if [[ ! -x "$DIR/dist/.local/bin/matchmedia" ]]; then
-    echo "error: build/dist/.local/bin/matchmedia not found; pick a rebuild option" >&2
-    exit 1
-  fi
-  local xdg="$DIR/cache/xdg"
-  mkdir -p "$xdg/.local/bin" \
-    "$xdg/.local/share/matchmedia/config" \
-    "$xdg/.local/state/matchmedia" \
-    "$xdg/.cache" \
-    "$xdg/Videos"
-  rm -rf "$xdg/.local/bin/matchmedia" \
-    "$xdg/.local/share/matchmedia/config/default.yaml" \
-    "$xdg/.local/share/matchmedia/public"
-  cp -a "$DIR/dist/.local/bin/matchmedia" "$xdg/.local/bin/matchmedia"
-  cp -a "$DIR/dist/.local/share/matchmedia/config/default.yaml" "$xdg/.local/share/matchmedia/config/default.yaml"
-  cp -a "$DIR/dist/.local/share/matchmedia/public" "$xdg/.local/share/matchmedia/public"
-  mkdir -p "$xdg/.local/state/matchmedia" \
-    "$xdg/.local/share/matchmedia/catalog"
-  compose up --build --force-recreate --abort-on-container-exit app
 }
 
 # Arrow/enter menu. Sets CHOICE to the 0-based index.

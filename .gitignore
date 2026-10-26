@@ -40,4 +40,18 @@ src/.env
 .vscode/
 secrets
 **/secrets
-experiments
+
+# CLI report (may include local library paths)
+match.md
+overlay.yaml
+src/cmd/match.md
+
+# leftover HTTP-era fixtures (uid nobody; cannot unlink)
+tests/
+
+# Staged for go:embed at generate/build; sources are LICENSE, docs/logo.png, docs/kofi.png, docs/attribution.md
+/src/cmd/LICENSE
+/src/cmd/logo.png
+/src/cmd/kofi.png
+/src/cmd/attribution.md
+**/*.log

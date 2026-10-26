@@ -1,54 +1,94 @@
 <p align="center">
-  <img src="src/share/assets/matchmedia.svg" alt="MatchMedia" width="180">
+  <img src="docs/matchmedia.svg" alt="MatchMedia" width="180">
 </p>
 
 <h1 align="center">MatchMedia</h1>
-<h6 align="center">Match Media to Metadata.</h6>
+<h6 align="center">Match media to metadata.</h6>
 
-  
-- **MatchMedia** is a statistical engine responsible for directory hierarchy discovery of media libraries, title extraction and grouping, metadata search-and-fetch from providers like TVMaze, statistically scoring and ranking candidates and mapping them to the appropriate files.  
-- **MatchMedia** is also capable of ingesting a list of titles for which it can search, fetch and map metadata.  
-- The browser UI is a dev console.
+- **MatchMedia** is a statistical engine for directory hierarchy discovery of media libraries, title extraction and grouping, metadata search-and-fetch from YAML providers (shipped [TMDB](https://developer.themoviedb.org/)), scoring and ranking candidates, and mapping them to the appropriate files.
+- **MatchMedia** can ingest a list of titles and search, fetch, and map metadata for them.
 
+## Install the precompiled CLI
 
-Shipped providers: 
-- no apikey required:
-  - [TVMaze](https://www.tvmaze.com/api) 
-  - [Jikan](https://docs.api.jikan.moe/) (no key). 
-- apikey required:
-  - [OMDb](https://www.omdbapi.com/)
-  - [TMDB](https://developer.themoviedb.org/)
-
-## Install
-Download `matchmedia-<version>-linux-amd64.tar.gz` from [GitHub Releases](https://github.com/alyshmahell/matchmedia/releases). Unpack it. The archive root is `matchmedia/` (`.local/bin/matchmedia`, `.local/share/matchmedia/`, `LICENSE`).
-
-## Run
-From that directo
 ```bash
-./matchmedia
+curl -fL https://github.com/alyshmahell/matchmedia/releases/latest/download/matchmedia-linux-amd64.tar.gz \
+  | tar -xz -C "$HOME" --strip-components=1 matchmedia/.local
 ```
 
-The process listens on `http.addr` from `config/default.yaml`, shipped as `127.0.0.1:7680`, so only this computer can open it. Set `http.addr` to `:7680` in `$XDG_DATA_HOME/matchmedia/config/overlay.yaml` to listen on every interface.
+This unpacks `.local/bin/matchmedia` under `$HOME`.  
+Open a new terminal for the binary to get picked up by $PATH.
 
-The binary belongs in `$HOME/.local/bin/matchmedia`. Shipped `config/default.yaml` and `public/` live in `$XDG_DATA_HOME/matchmedia` (default `~/.local/share/matchmedia`). The user overlay is `config/overlay.yaml` and provider keys are `config/secrets` in that same directory. The NFO catalog is `catalog/` there. Session job files live in `$XDG_STATE_HOME/matchmedia` (default `~/.local/state/matchmedia`). Pass `-config` to load a different `default.yaml`.
+## Run as a CLI
 
-## Library and keys
-
-The folder picker stays inside `browse_roots` from `$XDG_DATA_HOME/matchmedia/config/default.yaml`. The shipped list is `/mnt`, `/media`, `$XDG_VIDEOS_DIR`, and `$XDG_MUSIC_DIR` (`$HOME/Videos` and `$HOME/Music`, or the paths in `user-dirs.dirs`). A path is allowed only when that directory exists. Replace the list in `$XDG_DATA_HOME/matchmedia/config/overlay.yaml`.
-
-TVMaze and Jikan need no key. Set OMDb and TMDB keys in `$XDG_DATA_HOME/matchmedia/config/secrets`, or in the dev console secrets panel.
-
-## Use
-
-### As a RESTful API (Intended Use Case):
-
-Check [architecture](docs/architecture.md) then [match](docs/design/match.md).
-
-### As a WebUI (Intended for Development):
-Check [gui](docs/design/gui.md):
-- **Scan** a path under the browse root. MatchMedia groups files into titles, then searches providers.
-- **Ingest** a CSV or JSON list of titles (optional year, type, season, episode, IMDb id).
-- High-confidence hits auto-match. Close scores stay **manual** until you pick a candidate.
-- Matched titles are written under `$XDG_DATA_HOME/matchmedia/catalog` as NFO trees with posters.
+```bash
+matchmedia -help
+```
 
 
+| Flag | Meaning |
+| --- | --- |
+| `-overlay` | Overlay YAML. Empty means shipped default only. |
+| `-path` | Library directory. Required unless `-ingest` is set. |
+| `-mode` | `rescan`, `changes`, `missing`, or `nfo`. Default is `rescan`. |
+| `-ingest` | CSV or JSON title list instead of `-path`. |
+| `-report` | Markdown report path. Default is `match.md`. |
+| `-save` | Write NFO and posters next to the media. Default is off. |
+| `-help` | Print usage, license, and attribution, then exit. |
+
+Set the TMDB key in overlay YAML file and pass it with `-overlay <file-path>`:
+
+```yaml
+providers:
+  tmdb:
+    api_key: YOUR_KEY
+```
+
+## Use as a Go module
+
+Module path: `github.com/alyshmahell/matchmedia/src`.
+Import prefix: `github.com/alyshmahell/matchmedia/src/mod`.
+
+```bash
+go get github.com/alyshmahell/matchmedia/src
+```
+
+```go
+import (
+	"github.com/alyshmahell/matchmedia/src/mod/config"
+	"github.com/alyshmahell/matchmedia/src/mod/fetch"
+	"github.com/alyshmahell/matchmedia/src/mod/match"
+	"github.com/alyshmahell/matchmedia/src/mod/sidecar"
+	"github.com/alyshmahell/matchmedia/src/mod/scan"
+)
+
+cfg, err := config.New("overlay.yaml")
+client := fetch.New(cfg)
+jobs, err := scan.Run(cfg, "/media/Shows", scan.ModeMissing)
+for job := range match.Run(ctx, client, jobs) {
+	_, err = sidecar.Write(ctx, client, []match.Job{job})
+}
+```
+
+For grouping, ranking, scan modes, TMDB YAML, and the rest of the CLI, see [docs/manual.md](docs/manual.md).
+
+## Attribution
+#### TMDb
+<div align="center">
+  <img src="docs/tmdb-attribution.svg" alt="The Movie Database" width="140">
+  </br>
+  <b>
+  This product uses the TMDb API but is not endorsed or certified by TMDb.
+  </b>
+  </br>
+  <p>https://www.themoviedb.org/</p>
+
+</div>
+
+#### TVmaze
+
+This product uses the [TVmaze API (CC BY-SA)](https://www.tvmaze.com/).
+
+
+#### OMDb
+
+This product uses the [OMDb API](https://www.omdbapi.com/).
