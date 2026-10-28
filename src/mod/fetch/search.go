@@ -289,11 +289,7 @@ func mergeDetail(cand *rank.Hit, ep *config.Episode, item any, limit int) {
 		cand.Title = asString(dig(item, p))
 	}
 	if p := ep.Fields["year"]; p != "" && cand.Year == "" {
-		year := asString(dig(item, p))
-		if ep.Year == "prefix4" && len(year) >= 4 {
-			year = year[:4]
-		}
-		cand.Year = year
+		cand.Year = yearValue(asString(dig(item, p)), ep.Year)
 	}
 	if p := ep.Fields["url"]; p != "" && cand.URL == "" {
 		cand.URL = asString(dig(item, p))
@@ -304,6 +300,8 @@ func mergeDetail(cand *rank.Hit, ep *config.Episode, item any, limit int) {
 	if extra := extraAttrs(ep.Fields, item); len(extra) > 0 {
 		cand.Attrs = overlayAttrs(cand.Attrs, extra)
 	}
+	cand.Attrs = normalizePremieredAttrs(cand.Attrs)
+	cand.Year = fillYearFromPremiered(cand.Year, cand.Attrs)
 }
 
 func overlayAttrs(base, extra map[string]string) map[string]string {
