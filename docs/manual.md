@@ -2,7 +2,7 @@
 ---
 - **MatchMedia** is a statistical engine for directory hierarchy discovery of media libraries, title extraction and grouping, metadata search-and-fetch from YAML providers (shipped [TMDB](https://developer.themoviedb.org/)), scoring and ranking candidates, and mapping them to the appropriate files.
 - **MatchMedia** can ingest a list of titles and search, fetch, and map metadata for them.
-- **Module**: `github.com/alyshmahell/matchmedia/src`. 
+- **Module**: `github.com/alyshmahell/matchmedia`. 
 - **Library import prefix**: `github.com/alyshmahell/matchmedia/src/mod`.
 
 ## Packages
