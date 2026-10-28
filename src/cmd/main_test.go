@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/alyshmahell/matchmedia/src/mod/config"
 )
 
 func TestCLIHelp(t *testing.T) {
@@ -16,8 +18,13 @@ func TestCLIHelp(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	got := string(out)
-	if !strings.Contains(got, "MatchMedia") {
-		t.Fatalf("missing title in %s", got)
+	cfg, err := config.New("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantTitle := "MatchMedia " + strings.TrimSpace(cfg.Version)
+	if !strings.Contains(got, wantTitle) {
+		t.Fatalf("missing %q in %s", wantTitle, got)
 	}
 	if ui, si := strings.Index(got, "Usage"), strings.Index(got, "Support MatchMedia"); ui < 0 || si < 0 || ui > si {
 		t.Fatalf("Usage should come before Support: %s", got)
