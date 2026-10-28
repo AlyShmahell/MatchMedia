@@ -45,11 +45,11 @@ providers:
 
 ## Use as a Go module
 
-Module path: `github.com/alyshmahell/matchmedia/src`.
+Module path: `github.com/alyshmahell/matchmedia`.
 Import prefix: `github.com/alyshmahell/matchmedia/src/mod`.
 
 ```bash
-go get github.com/alyshmahell/matchmedia/src
+go get github.com/alyshmahell/matchmedia
 ```
 
 ```go

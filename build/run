@@ -34,11 +34,13 @@ rebuild() {
   local src cf
   src="$(mktemp -d)"
   cf="$(mktemp)"
-  cp -a "$DIR/../src/." "$src/"
-  cp "$DIR/../LICENSE" "$src/cmd/LICENSE"
-  cp "$DIR/../docs/logo.png" "$src/cmd/logo.png"
-  cp "$DIR/../docs/kofi.png" "$src/cmd/kofi.png"
-  cp "$DIR/../docs/attribution.md" "$src/cmd/attribution.md"
+  cp "$DIR/../go.mod" "$DIR/../go.sum" "$src/"
+  mkdir -p "$src/src"
+  cp -a "$DIR/../src/." "$src/src/"
+  cp "$DIR/../LICENSE" "$src/src/cmd/LICENSE"
+  cp "$DIR/../docs/logo.png" "$src/src/cmd/logo.png"
+  cp "$DIR/../docs/kofi.png" "$src/src/cmd/kofi.png"
+  cp "$DIR/../docs/attribution.md" "$src/src/cmd/attribution.md"
   cp "$DIR/Containerfile" "$cf"
   tar -C "$src" -cf - . | "$(engine)" build --pull=always -f "$cf" -t "$IMAGE" -
   rm -rf "$src" "$cf"
