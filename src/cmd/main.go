@@ -39,13 +39,25 @@ func printHelp() {
 	printEmbedded(w, attributionText)
 }
 
+func helpVersion() string {
+	cfg, err := config.New("")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(cfg.Version)
+}
+
 func printHelpTitle(w *os.File, color bool) {
+	title := "MatchMedia"
+	if v := helpVersion(); v != "" {
+		title = "MatchMedia " + v
+	}
 	if color {
-		fmt.Fprintf(w, "%s%sMatchMedia%s\n", ansiBold, ansiGreen, ansiReset)
+		fmt.Fprintf(w, "%s%s%s%s\n", ansiBold, ansiGreen, title, ansiReset)
 		fmt.Fprintf(w, "%s%s%s%s\n", ansiBold, ansiGreen, helpSep, ansiReset)
 		return
 	}
-	fmt.Fprintln(w, "MatchMedia")
+	fmt.Fprintln(w, title)
 	fmt.Fprintln(w, helpSep)
 }
 
@@ -99,7 +111,7 @@ func main() {
 	report := flag.String("report", "match.md", "markdown report path")
 	logPath := flag.String("log", "matchmedia.log", "run log path")
 	saveOn := flag.Bool("save", false, "write NFO and posters next to the media")
-	helpOn := flag.Bool("help", false, "print usage, license, and attribution")
+	helpOn := flag.Bool("help", false, "print version, usage, license, and attribution")
 	flag.Usage = printHelp
 	flag.Parse()
 
