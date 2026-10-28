@@ -9,7 +9,7 @@ http:
     fails: 5
     min_ms: 32768
     max_ms: 524288
-version: "v0.2.3"
+version: "0.2.4"
 match:
   min_score: 0.72
   min_margin: 0.04
