@@ -159,6 +159,8 @@ func TestWriteShowDirEpisodeNFO(t *testing.T) {
 			Episodes: []fetch.Episode{{
 				Number: "1",
 				Title:  "Pilot",
+				Year:   "2012",
+				Aired:  "2012-04-05",
 				Path:   video,
 			}},
 		}},
@@ -183,6 +185,9 @@ func TestWriteShowDirEpisodeNFO(t *testing.T) {
 	}
 	if !strings.Contains(string(ep), "<episodedetails>") || !strings.Contains(string(ep), "<title>Pilot</title>") {
 		t.Fatalf("episode nfo %s", ep)
+	}
+	if !strings.Contains(string(ep), "<aired>2012-04-05</aired>") || !strings.Contains(string(ep), "<year>2012</year>") {
+		t.Fatalf("episode aired/year %s", ep)
 	}
 	ents, err := os.ReadDir(dir)
 	if err != nil {

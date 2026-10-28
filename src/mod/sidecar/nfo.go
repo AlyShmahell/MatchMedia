@@ -202,7 +202,11 @@ func spliceURLs(path string, reqs []rank.Request) (bool, error) {
 }
 
 func writeEpisodeNFO(path, provider, season string, e fetch.Episode) error {
+	aired := strings.TrimSpace(e.Aired)
+	if aired == "" {
+		aired = strings.TrimSpace(e.Year)
+	}
 	return writeNFO(path, episodeNFO{
-		Title: e.Title, Plot: e.Synopsis, Year: e.Year, Aired: e.Year, Season: season, Episode: e.Number, UniqueID: makeID(provider, e.ID),
+		Title: e.Title, Plot: e.Synopsis, Year: e.Year, Aired: aired, Season: season, Episode: e.Number, UniqueID: makeID(provider, e.ID),
 	})
 }

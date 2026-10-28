@@ -94,10 +94,7 @@ func hitFrom(name string, spec config.Provider, item any, limit int) (rank.Hit, 
 	if id == "" || title == "" {
 		return rank.Hit{}, false
 	}
-	year := asString(dig(item, spec.Fields["year"]))
-	if spec.Year == "prefix4" && len(year) >= 4 {
-		year = year[:4]
-	}
+	year := yearValue(asString(dig(item, spec.Fields["year"])), spec.Year)
 	href := asString(dig(item, spec.Fields["url"]))
 	if spec.URLPrefix != "" {
 		href = spec.URLPrefix + id
@@ -113,6 +110,8 @@ func hitFrom(name string, spec config.Provider, item any, limit int) (rank.Hit, 
 	if spec.PosterPrefix != "" && poster != "" {
 		poster = spec.PosterPrefix + poster
 	}
+	attrs := normalizePremieredAttrs(mergeAttrs(extraAttrs(spec.Fields, item), spec.Attrs))
+	year = fillYearFromPremiered(year, attrs)
 	return rank.Hit{
 		Provider: name,
 		ID:       id,
@@ -121,10 +120,80 @@ func hitFrom(name string, spec config.Provider, item any, limit int) (rank.Hit, 
 		URL:      href,
 		Synopsis: synopsis,
 		Poster:   poster,
-		Attrs:    mergeAttrs(extraAttrs(spec.Fields, item), spec.Attrs),
+		Attrs:    attrs,
 		NFO:      spec.NFO,
 		UniqueID: spec.UniqueID,
 	}, true
+}
+
+// yearValue applies prefix4 when configured, and still takes the calendar year
+// from a full ISO-style date when Year would otherwise stay empty or too long.
+func yearValue(raw, mode string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if mode == "prefix4" && len(raw) >= 4 {
+		return raw[:4]
+	}
+	if y := prefix4Year(raw); y != "" && (len(raw) > 4 || strings.ContainsAny(raw, "-/")) {
+		return y
+	}
+	return raw
+}
+
+func prefix4Year(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) < 4 {
+		return ""
+	}
+	y := s[:4]
+	for _, r := range y {
+		if r < '0' || r > '9' {
+			return ""
+		}
+	}
+	return y
+}
+
+var premieredAliases = []string{
+	"released", "Released", "release_date", "first_air_date", "air_date", "aired",
+}
+
+// normalizePremieredAttrs folds date aliases into Attrs["premiered"] and drops them.
+func normalizePremieredAttrs(attrs map[string]string) map[string]string {
+	if len(attrs) == 0 {
+		return attrs
+	}
+	premiered := strings.TrimSpace(attrs["premiered"])
+	if premiered == "" {
+		for _, key := range premieredAliases {
+			if v := strings.TrimSpace(attrs[key]); v != "" {
+				premiered = v
+				break
+			}
+		}
+	}
+	for _, key := range premieredAliases {
+		delete(attrs, key)
+	}
+	if premiered != "" {
+		attrs["premiered"] = premiered
+	}
+	if len(attrs) == 0 {
+		return nil
+	}
+	return attrs
+}
+
+func fillYearFromPremiered(year string, attrs map[string]string) string {
+	if strings.TrimSpace(year) != "" {
+		return year
+	}
+	if attrs == nil {
+		return ""
+	}
+	return prefix4Year(attrs["premiered"])
 }
 
 func mergeAttrs(extracted, static map[string]string) map[string]string {
