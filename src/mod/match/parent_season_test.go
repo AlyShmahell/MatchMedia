@@ -42,6 +42,19 @@ func TestSeasonFolder(t *testing.T) {
 	if got := SeasonFolder(cfg, show, first, "12"); got != "" {
 		t.Fatalf("later token %s", got)
 	}
+	release := filepath.Join(show, "Show.SEASON.01.S01", "ep.mkv")
+	if got := SeasonDir(cfg, show, release); got != filepath.Dir(release) {
+		t.Fatalf("release %s", got)
+	}
+	if got := SeasonDir(nil, show, release); got != filepath.Dir(release) {
+		t.Fatalf("nil cfg %s", got)
+	}
+	if got := SeasonDir(cfg, show, nested); got != filepath.Join(show, "Season 12") {
+		t.Fatalf("season dir nested %s", got)
+	}
+	if got := SeasonDir(cfg, show, filepath.Join(show, "ep.mkv")); got != "" {
+		t.Fatalf("season dir flat %s", got)
+	}
 	for _, name := range []string{"Specials", "Movies", "OVAs"} {
 		p := filepath.Join(show, name, "ep.mkv")
 		if got := SeasonFolder(cfg, show, p, "0"); got != filepath.Dir(p) {

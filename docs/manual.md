@@ -53,7 +53,7 @@ Do not filter files by extra or kind labels. `files[]` keeps every video in the 
 Pass the mode to `scan.Run`.
 
 1. `rescan` — Ignore sidecars. Send every title to providers.
-2. `changes` — A title NFO and poster with saved provider URLs are replayed. A failed replay, or a title with no saved URLs, is searched once. Missing episode NFOs and stills are written without replacing the title text or poster. A missing season NFO and poster are written in the season directory. A show whose episode NFOs are already present stays matched.
+2. `changes` — A title NFO and poster with saved provider URLs are replayed. A failed replay, or a title with no saved URLs, is searched once. Missing episode NFOs and stills are written without replacing the title text or poster. A missing season NFO and poster are written in the season directory. A show whose episode NFOs and season files are already present stays matched.
 3. `missing` — Skip a title that has a title NFO. Send only titles with no title NFO.
 4. `nfo` — Do not call providers. A complete sidecar is matched. An incomplete sidecar is unmatched.
 
@@ -65,8 +65,10 @@ flowchart TD
   changes --> title{"title NFO and poster"}
   title -->|no| full["pending search and full write"]
   title -->|yes| episodes{"every episode NFO present"}
-  episodes -->|yes| done["matched, no fetch and no write"]
   episodes -->|no| saved{"saved urls"}
+  episodes -->|yes| seasons{"every season NFO and poster present"}
+  seasons -->|yes| done["matched, no fetch and no write"]
+  seasons -->|no| saved
   saved -->|yes| replay[replay those requests]
   replay -->|"all succeed"| gaps["write missing episode NFOs, stills, and season files"]
   replay -->|"any request fails"| search[one search]

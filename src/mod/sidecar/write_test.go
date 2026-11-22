@@ -739,6 +739,70 @@ func TestChangesKeepsSeasonFiles(t *testing.T) {
 	}
 }
 
+func TestChangesWritesMissingReleaseSeason(t *testing.T) {
+	cfg, err := config.New("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/jpeg")
+		_, _ = w.Write([]byte("art"))
+	}))
+	t.Cleanup(srv.Close)
+	show := t.TempDir()
+	season := "Show.SEASON.01.S01"
+	ep := filepath.Join(show, season, "ep.mkv")
+	if err := os.MkdirAll(filepath.Dir(ep), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ep, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(show, season, "ep.nfo"), []byte("keep-ep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(show, "tvshow.nfo"), []byte("<tvshow><title>Keep Title</title></tvshow>\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(show, "poster.jpg"), []byte("keep-show"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	hit := rank.Hit{Provider: "tmdb", ID: "9", Title: "Show", Poster: srv.URL + "/show.jpg", UniqueID: "tmdb-tv"}
+	job := match.Job{
+		Path: show, Kind: "show", Status: "matched", Ranker: "replay", Match: &hit, CatalogFor: hit.Key(),
+		Files: []match.JobFile{{Path: ep, Season: "1", Episode: "1"}},
+		Catalog: []match.CatalogSeason{{
+			Number: "1", Title: "Show", Poster: srv.URL + "/s1.jpg",
+			Episodes: []fetch.Episode{{Number: "1", Title: "One", Path: ep}},
+		}},
+	}
+	_, st, err := WriteProgress(context.Background(), fetch.New(cfg), "changes", []match.Job{job}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.TitleNFO != 1 || st.EpisodeNFO != 0 || st.Posters != 1 {
+		t.Fatalf("stats %+v", st)
+	}
+	if body := readFile(t, filepath.Join(show, "tvshow.nfo")); !strings.Contains(body, "<title>Keep Title</title>") {
+		t.Fatalf("show nfo %s", body)
+	}
+	if body := readFile(t, filepath.Join(show, "poster.jpg")); body != "keep-show" {
+		t.Fatalf("show poster %q", body)
+	}
+	if body := readFile(t, filepath.Join(show, season, "ep.nfo")); body != "keep-ep" {
+		t.Fatalf("episode nfo %q", body)
+	}
+	nfo := readFile(t, filepath.Join(show, season, "season.nfo"))
+	for _, want := range []string{"<title>Season 1</title>", "<seasonnumber>1</seasonnumber>"} {
+		if !strings.Contains(nfo, want) {
+			t.Fatalf("missing %s in %s", want, nfo)
+		}
+	}
+	if body := readFile(t, filepath.Join(show, season, "poster.jpg")); body != "art" {
+		t.Fatalf("season poster %q", body)
+	}
+}
+
 func TestRescanReplacesSeasonPoster(t *testing.T) {
 	cfg, err := config.New("")
 	if err != nil {
