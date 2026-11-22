@@ -109,6 +109,9 @@ func Prefetch(ctx context.Context, client *fetch.Client, job match.Job, mode str
 	if job.Kind != "show" || job.Catalog == nil || job.CatalogFor != cand.Key() {
 		return
 	}
+	for dir, s := range seasonTargets(client.Config(), job) {
+		prefetchPoster(ctx, client, cand.Provider, s.Poster, dir, "poster", replace)
+	}
 	for _, s := range job.Catalog {
 		for _, e := range s.Episodes {
 			for _, p := range episodePaths(e) {
@@ -136,7 +139,7 @@ func writeJob(ctx context.Context, client *fetch.Client, job match.Job, cand ran
 		return job, st, nil
 	}
 	if keep && Complete(job, false) {
-		return writeKept(ctx, client, job, cand)
+		return writeKept(ctx, client, job, cand, replace, keep)
 	}
 	info, err := os.Stat(job.Path)
 	if err != nil {
@@ -197,10 +200,16 @@ func writeJob(ctx context.Context, client *fetch.Client, job match.Job, cand ran
 			}
 		}
 	}
+	extra, err := writeSeasonSidecars(ctx, client, job, cand, replace, keep)
+	if err != nil {
+		return job, st, err
+	}
+	st.TitleNFO += extra.TitleNFO
+	st.Posters += extra.Posters
 	return job, st, nil
 }
 
-func writeKept(ctx context.Context, client *fetch.Client, job match.Job, cand rank.Hit) (match.Job, Stats, error) {
+func writeKept(ctx context.Context, client *fetch.Client, job match.Job, cand rank.Hit, replace, keep bool) (match.Job, Stats, error) {
 	var st Stats
 	nfo := job.NFOPath
 	if nfo == "" {
@@ -244,7 +253,69 @@ func writeKept(ctx context.Context, client *fetch.Client, job match.Job, cand ra
 			}
 		}
 	}
+	extra, err := writeSeasonSidecars(ctx, client, job, cand, replace, keep)
+	if err != nil {
+		return job, st, err
+	}
+	st.TitleNFO += extra.TitleNFO
+	st.Posters += extra.Posters
 	return job, st, nil
+}
+
+func seasonTargets(cfg *config.Config, job match.Job) map[string]fetch.Season {
+	type claim struct {
+		key string
+		s   fetch.Season
+		ok  bool
+	}
+	claimed := map[string]*claim{}
+	for _, s := range job.Catalog {
+		key := fetch.CatalogNumKey(s.Number)
+		for _, e := range s.Episodes {
+			for _, p := range episodePaths(e) {
+				dir := match.SeasonFolder(cfg, job.Path, p, s.Number)
+				if dir == "" {
+					continue
+				}
+				c := claimed[dir]
+				if c == nil {
+					claimed[dir] = &claim{key: key, s: s, ok: true}
+					continue
+				}
+				if c.key != key {
+					c.ok = false
+				}
+			}
+		}
+	}
+	out := map[string]fetch.Season{}
+	for dir, c := range claimed {
+		if c.ok {
+			out[dir] = c.s
+		}
+	}
+	return out
+}
+
+func writeSeasonSidecars(ctx context.Context, client *fetch.Client, job match.Job, cand rank.Hit, replace, keep bool) (Stats, error) {
+	var st Stats
+	if job.Kind != "show" || job.Catalog == nil || job.CatalogFor != cand.Key() {
+		return st, nil
+	}
+	show := strings.TrimSpace(cand.Title)
+	for dir, s := range seasonTargets(client.Config(), job) {
+		nfoPath := filepath.Join(dir, "season.nfo")
+		if !(keep && fileExists(nfoPath)) {
+			if err := writeSeasonNFO(nfoPath, seasonTitle(show, s.Title, s.Number), s); err != nil {
+				return st, err
+			}
+			st.TitleNFO++
+		}
+		if _, saved := savePoster(ctx, client, cand.Provider, s.Poster, dir, "poster", replace); saved {
+			st.Posters++
+		}
+	}
+	return st, nil
 }
 
 func stampEpisode(files []match.JobFile, video, nfo, thumb string) {

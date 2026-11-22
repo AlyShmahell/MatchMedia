@@ -101,6 +101,49 @@ func seasonToken(name string) (string, bool) {
 	return normNum(m[1]), true
 }
 
+// SeasonFolder is the directory under showPath that holds filePath for number.
+// It uses the same cleaned season token as folding. Season 0 also matches the
+// specials, movies, and ovas token. The show directory itself is never returned.
+func SeasonFolder(cfg *config.Config, showPath, filePath, number string) string {
+	show := filepath.Clean(strings.TrimSpace(showPath))
+	file := filepath.Clean(strings.TrimSpace(filePath))
+	if show == "" || show == "." || file == "" || file == "." || !insideDir(show, file) {
+		return ""
+	}
+	num := fetch.CatalogNumKey(number)
+	dir := filepath.Dir(file)
+	for dir != show {
+		if !insideDir(show, dir) {
+			return ""
+		}
+		if seasonDirName(cfg, filepath.Base(dir), num) {
+			return dir
+		}
+		next := filepath.Dir(dir)
+		if next == dir {
+			return ""
+		}
+		dir = next
+	}
+	return ""
+}
+
+func insideDir(show, path string) bool {
+	rel, err := filepath.Rel(show, path)
+	if err != nil {
+		return false
+	}
+	return rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+func seasonDirName(cfg *config.Config, base, num string) bool {
+	name := clean.Apply(cfg, base)
+	if token, ok := seasonToken(name); ok && token == num {
+		return true
+	}
+	return num == "0" && mediaKindRe.MatchString(name)
+}
+
 func tokenFit(seasons []CatalogSeason, num string, nfiles int) (string, bool) {
 	var hit *CatalogSeason
 	for i := range seasons {
