@@ -65,6 +65,27 @@ func Complete(job match.Job, requireEpisodeNFO bool) bool {
 				return false
 			}
 		}
+		if !seasonSidecarsOK(job) {
+			return false
+		}
+	}
+	return true
+}
+
+func seasonSidecarsOK(job match.Job) bool {
+	seen := map[string]struct{}{}
+	for _, f := range job.Files {
+		dir := match.SeasonDir(nil, job.Path, f.Path)
+		if dir == "" {
+			continue
+		}
+		if _, ok := seen[dir]; ok {
+			continue
+		}
+		seen[dir] = struct{}{}
+		if !fileExists(filepath.Join(dir, "season.nfo")) || existingPoster(dir, "poster") == "" {
+			return false
+		}
 	}
 	return true
 }

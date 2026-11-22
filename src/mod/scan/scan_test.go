@@ -195,6 +195,19 @@ func TestChangesUsesSavedURLs(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(show, "Season 1", "Grimgar S01E01.nfo"), []byte("<episodedetails><title>E</title></episodedetails>"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	open, err := Run(cfg, root, ModeChanges)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(open) != 1 || open[0].Status != "pending" {
+		t.Fatalf("episode nfo still needs season files %#v", open)
+	}
+	if err := os.WriteFile(filepath.Join(show, "Season 1", "season.nfo"), []byte("<season><title>Season 1</title></season>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(show, "Season 1", "poster.jpg"), []byte("s"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	done, err := Run(cfg, root, ModeChanges)
 	if err != nil {
 		t.Fatal(err)

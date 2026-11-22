@@ -210,3 +210,36 @@ func writeEpisodeNFO(path, provider, season string, e fetch.Episode) error {
 		Title: e.Title, Plot: e.Synopsis, Year: e.Year, Aired: aired, Season: season, Episode: e.Number, UniqueID: makeID(provider, e.ID),
 	})
 }
+
+type seasonNFO struct {
+	XMLName      xml.Name `xml:"season"`
+	Title        string   `xml:"title"`
+	SeasonNumber string   `xml:"seasonnumber"`
+	Plot         string   `xml:"plot,omitempty"`
+	Year         string   `xml:"year,omitempty"`
+}
+
+func seasonTitle(showTitle, title, number string) string {
+	title = strings.TrimSpace(title)
+	show := strings.TrimSpace(showTitle)
+	if title != "" && (show == "" || !strings.EqualFold(title, show)) {
+		return title
+	}
+	n := fetch.CatalogNumKey(number)
+	if n == "0" {
+		return "Specials"
+	}
+	if n == "" {
+		return "Season"
+	}
+	return "Season " + n
+}
+
+func writeSeasonNFO(path, title string, s fetch.Season) error {
+	return writeNFO(path, seasonNFO{
+		Title:        title,
+		SeasonNumber: fetch.CatalogNumKey(s.Number),
+		Plot:         strings.TrimSpace(s.Synopsis),
+		Year:         strings.TrimSpace(s.Year),
+	})
+}

@@ -53,11 +53,11 @@ Do not filter files by extra or kind labels. `files[]` keeps every video in the 
 Pass the mode to `scan.Run`.
 
 1. `rescan` — Ignore sidecars. Send every title to providers.
-2. `changes` — A title NFO and poster with saved provider URLs are replayed. A failed replay, or a title with no saved URLs, is searched once. Missing episode NFOs and stills are written without replacing the title text or poster. A show whose episode NFOs are already present stays matched.
+2. `changes` — A title NFO and poster with saved provider URLs are replayed. A failed replay, or a title with no saved URLs, is searched once. Missing episode NFOs and stills are written without replacing the title text or poster. A missing season NFO and poster are written in the season directory. A show whose episode NFOs and season files are already present stays matched.
 3. `missing` — Skip a title that has a title NFO. Send only titles with no title NFO.
 4. `nfo` — Do not call providers. A complete sidecar is matched. An incomplete sidecar is unmatched.
 
-A complete sidecar is a title NFO plus a poster. For `changes`, saved `<urls>` are the provider requests to replay. A show writes only episode NFOs and stills that are not already beside the video.
+A complete sidecar is a title NFO plus a poster. For `changes`, saved `<urls>` are the provider requests to replay. A show writes only episode NFOs and stills that are not already beside the video, and only a season NFO and poster that are not already in the season directory.
 
 ```mermaid
 flowchart TD
@@ -65,16 +65,18 @@ flowchart TD
   changes --> title{"title NFO and poster"}
   title -->|no| full["pending search and full write"]
   title -->|yes| episodes{"every episode NFO present"}
-  episodes -->|yes| done["matched, no fetch and no write"]
   episodes -->|no| saved{"saved urls"}
+  episodes -->|yes| seasons{"every season NFO and poster present"}
+  seasons -->|yes| done["matched, no fetch and no write"]
+  seasons -->|no| saved
   saved -->|yes| replay[replay those requests]
-  replay -->|"all succeed"| gaps["write missing episode NFOs and stills"]
+  replay -->|"all succeed"| gaps["write missing episode NFOs, stills, and season files"]
   replay -->|"any request fails"| search[one search]
   saved -->|no| search
-  search --> rewrite["replace urls and write missing episode sidecars"]
+  search --> rewrite["replace urls and write missing episode and season sidecars"]
 ```
 
-After that search, the existing `<urls>` block is replaced and only missing episode sidecars are written, while the title, plot, and poster stay.
+After that search, the existing `<urls>` block is replaced and only missing episode sidecars are written, while the title, plot, and poster stay. Missing season files are written the same way.
 
 ## Match
 
@@ -141,7 +143,7 @@ A provider with one kind can keep `url`, `query`, `items`, and `fields` on the p
 
 ## Sidecar
 
-`sidecar.Write` writes NFO and posters next to `job.Path`. A show directory gets `tvshow.nfo` and `poster`. A movie directory gets `movie.nfo` and `poster`. A movie file gets `{stem}.nfo` and `{stem}-poster`. A show also gets `{stem}.nfo` beside each episode file mapped from the provider catalog.
+`sidecar.Write` writes NFO and posters next to `job.Path`. A show directory gets `tvshow.nfo` and `poster`. A movie directory gets `movie.nfo` and `poster`. A movie file gets `{stem}.nfo` and `{stem}-poster`. A show also gets `{stem}.nfo` and a still beside each episode file mapped from the provider catalog. A directory under the show whose cleaned name matches that episode’s catalog season gets `season.nfo` and `poster`. The season title is the catalog title. When that title is empty or the same as the show name, it is `Season N` for that season number, and `Specials` for season 0. Changes mode writes a season file only when it is missing.
 
 Scan modes read those same sidecar files.
 

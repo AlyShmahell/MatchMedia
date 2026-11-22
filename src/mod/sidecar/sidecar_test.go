@@ -3,6 +3,7 @@ package sidecar
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/alyshmahell/matchmedia/src/mod/match"
@@ -50,5 +51,45 @@ func TestTitleNFOAndComplete(t *testing.T) {
 	}
 	if len(got.Files) != 1 || got.Files[0].PosterPath == "" {
 		t.Fatalf("thumb %#v", got.Files)
+	}
+}
+
+func TestCompleteRequiresSeasonSidecar(t *testing.T) {
+	dir := t.TempDir()
+	show := filepath.Join(dir, "Show")
+	ep := filepath.Join(show, "Season 1", "Show.S01E01.mkv")
+	if err := os.MkdirAll(filepath.Dir(ep), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ep, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(show, "tvshow.nfo"), []byte("<tvshow><title>Show</title></tvshow>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(show, "poster.jpg"), []byte("p"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(strings.TrimSuffix(ep, filepath.Ext(ep))+".nfo", []byte("<episodedetails><title>Ep</title></episodedetails>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	job := match.Job{Path: show, Kind: "show", Files: []match.JobFile{{Path: ep}}}
+	if !Complete(job, false) {
+		t.Fatal("title sidecar")
+	}
+	if Complete(job, true) {
+		t.Fatal("missing season files")
+	}
+	if err := os.WriteFile(filepath.Join(show, "Season 1", "season.nfo"), []byte("<season><title>Season 1</title></season>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if Complete(job, true) {
+		t.Fatal("missing season poster")
+	}
+	if err := os.WriteFile(filepath.Join(show, "Season 1", "poster.jpg"), []byte("s"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !Complete(job, true) {
+		t.Fatal("season sidecar")
 	}
 }
